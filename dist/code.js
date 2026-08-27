@@ -415,8 +415,8 @@
   // src/plugin/code.ts
   figma.showUI(__html__, { width: 400, height: 620, title: "SlideCheck" });
   figma.ui.onmessage = (message) => __async(null, null, function* () {
-    try {
-      if (message.type === "SCAN_REQUEST") {
+    if (message.type === "SCAN_REQUEST") {
+      try {
         const document = collectFigmaDocument(message.scope);
         const findings = scanDocument(document);
         postToUi({
@@ -424,15 +424,22 @@
           issues: findings.map((finding) => toIssueDto(finding, document)),
           slideCount: document.slides.length
         });
+      } catch (error) {
+        postToUi({
+          type: "SCAN_ERROR",
+          message: error instanceof Error ? error.message : "Unknown scan error"
+        });
       }
-      if (message.type === "SELECT_NODE_REQUEST") {
+    }
+    if (message.type === "SELECT_NODE_REQUEST") {
+      try {
         yield selectNode(message.nodeId);
+      } catch (error) {
+        postToUi({
+          type: "SELECT_NODE_ERROR",
+          message: error instanceof Error ? error.message : "Unknown node selection error"
+        });
       }
-    } catch (error) {
-      postToUi({
-        type: "SCAN_ERROR",
-        message: error instanceof Error ? error.message : "Unknown scan error"
-      });
     }
   });
   function postToUi(message) {
@@ -465,6 +472,7 @@
       }
       figma.currentPage.selection = [node];
       figma.viewport.scrollAndZoomIntoView([node]);
+      postToUi({ type: "SELECT_NODE_RESULT", nodeId });
     });
   }
   function isSelectableSceneNode(node) {

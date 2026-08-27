@@ -649,6 +649,7 @@ export default function App() {
   const [issues, setIssues] = useState<Issue[]>(MOCK_ISSUES);
   const [slideCount, setSlideCount] = useState(12);
   const [scanScope, setScanScope] = useState<ScanScope>("page");
+  const [notice, setNotice] = useState<string | null>(null);
 
   const scoreBefore = computeScore(issues);
   const stepIdx     = STEP_ORDER.indexOf(step === "detail" ? "issues" : step);
@@ -675,8 +676,27 @@ export default function App() {
   }
 
   function selectNode(nodeId: string) {
+    setNotice(null);
     postToPlugin({ type: "SELECT_NODE_REQUEST", nodeId });
   }
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data?.pluginMessage as PluginToUiMessage | undefined;
+      if (!message) return;
+
+      if (message.type === "SELECT_NODE_ERROR") {
+        setNotice(message.message);
+      }
+
+      if (message.type === "SELECT_NODE_RESULT") {
+        setNotice("Слой выбран в Figma");
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
   return (
     <div className="w-full h-screen flex flex-col bg-[#111111] overflow-hidden"
@@ -707,6 +727,11 @@ export default function App() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
+        {notice && (
+          <div className="mx-4 mt-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2">
+            <p className="text-[11px] text-white/45 leading-relaxed">{notice}</p>
+          </div>
+        )}
         {step === "source" && (
           <SourceStep onNext={startScan} />
         )}

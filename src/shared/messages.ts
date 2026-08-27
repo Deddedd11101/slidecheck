@@ -21,4 +21,5 @@ export type UiToPluginMessage =
 export type PluginToUiMessage =
   | { type: "SCAN_RESULT"; issues: IssueDto[]; slideCount: number }
   | { type: "SCAN_ERROR"; message: string }
+  | { type: "SELECT_NODE_RESULT"; nodeId: string }
   | { type: "SELECT_NODE_ERROR"; message: string };
