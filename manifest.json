@@ -1,0 +1,11 @@
+{
+  "name": "SlideCheck",
+  "id": "com.figma.slidecheck-audit",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma", "slides"],
+  "documentAccess": "dynamic-page",
+  "permissions": [],
+  "networkAccess": { "allowedDomains": ["none"] }
+}
