@@ -1,4 +1,4 @@
-import { collectDesignDocument } from "./adapter/collect-design";
+import { collectFigmaDocument } from "./adapter/collect-figma-document";
 import { RULES } from "./rules/registry";
 import { scanDocument } from "./scanner/scan-document";
 import type { Finding, NormalizedDocument } from "../shared/types";
@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: 400, height: 620, title: "SlideCheck" });
 figma.ui.onmessage = async (message: UiToPluginMessage) => {
   try {
     if (message.type === "SCAN_REQUEST") {
-      const document = collectDesignDocument(message.scope);
+      const document = collectFigmaDocument(message.scope);
       const findings = scanDocument(document);
 
       postToUi({

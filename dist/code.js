@@ -21,14 +21,20 @@
     });
   };
 
-  // src/plugin/adapter/collect-design.ts
-  function collectDesignDocument(scope) {
+  // src/plugin/adapter/collect-figma-document.ts
+  function collectFigmaDocument(scope) {
     const roots = getScanRoots(scope);
     return {
       slides: roots.map(normalizeSlideRoot)
     };
   }
   function getScanRoots(scope) {
+    if (figma.editorType === "slides") {
+      return getSlideScanRoots(scope);
+    }
+    return getDesignScanRoots(scope);
+  }
+  function getDesignScanRoots(scope) {
     if (scope === "selected") {
       const selectedFrames = figma.currentPage.selection.filter((node) => node.type === "FRAME");
       if (selectedFrames.length > 0) {
@@ -37,13 +43,25 @@
     }
     return figma.currentPage.children.filter((node) => node.type === "FRAME");
   }
+  function getSlideScanRoots(scope) {
+    if (scope === "selected") {
+      const selectedSlides = figma.currentPage.selection.filter((node) => node.type === "SLIDE");
+      if (selectedSlides.length > 0) {
+        return selectedSlides;
+      }
+      if (figma.currentPage.focusedSlide) {
+        return [figma.currentPage.focusedSlide];
+      }
+    }
+    return figma.getSlideGrid().flat();
+  }
   function normalizeSlideRoot(frame) {
     var _a;
     const bounds = (_a = frame.absoluteBoundingBox) != null ? _a : { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
     return {
       id: frame.id,
       name: frame.name,
-      type: "FRAME",
+      type: frame.type === "SLIDE" ? "SLIDE" : "FRAME",
       bounds,
       children: frame.children.map((child) => normalizeNode(child, [frame.name]))
     };
@@ -399,7 +417,7 @@
   figma.ui.onmessage = (message) => __async(null, null, function* () {
     try {
       if (message.type === "SCAN_REQUEST") {
-        const document = collectDesignDocument(message.scope);
+        const document = collectFigmaDocument(message.scope);
         const findings = scanDocument(document);
         postToUi({
           type: "SCAN_RESULT",

@@ -2,8 +2,9 @@ import type { NormalizedDocument, NormalizedNode, NormalizedPaint, NormalizedSli
 import type { ScanScope } from "../../shared/messages";
 
 type NodeWithChildren = SceneNode & ChildrenMixin;
+type ScanRootNode = FrameNode | SlideNode;
 
-export function collectDesignDocument(scope: ScanScope): NormalizedDocument {
+export function collectFigmaDocument(scope: ScanScope): NormalizedDocument {
   const roots = getScanRoots(scope);
 
   return {
@@ -11,7 +12,15 @@ export function collectDesignDocument(scope: ScanScope): NormalizedDocument {
   };
 }
 
-function getScanRoots(scope: ScanScope): FrameNode[] {
+function getScanRoots(scope: ScanScope): ScanRootNode[] {
+  if (figma.editorType === "slides") {
+    return getSlideScanRoots(scope);
+  }
+
+  return getDesignScanRoots(scope);
+}
+
+function getDesignScanRoots(scope: ScanScope): FrameNode[] {
   if (scope === "selected") {
     const selectedFrames = figma.currentPage.selection.filter((node): node is FrameNode => node.type === "FRAME");
 
@@ -23,13 +32,29 @@ function getScanRoots(scope: ScanScope): FrameNode[] {
   return figma.currentPage.children.filter((node): node is FrameNode => node.type === "FRAME");
 }
 
-function normalizeSlideRoot(frame: FrameNode): NormalizedSlide {
+function getSlideScanRoots(scope: ScanScope): SlideNode[] {
+  if (scope === "selected") {
+    const selectedSlides = figma.currentPage.selection.filter((node): node is SlideNode => node.type === "SLIDE");
+
+    if (selectedSlides.length > 0) {
+      return selectedSlides;
+    }
+
+    if (figma.currentPage.focusedSlide) {
+      return [figma.currentPage.focusedSlide];
+    }
+  }
+
+  return figma.getSlideGrid().flat();
+}
+
+function normalizeSlideRoot(frame: ScanRootNode): NormalizedSlide {
   const bounds = frame.absoluteBoundingBox ?? { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
 
   return {
     id: frame.id,
     name: frame.name,
-    type: "FRAME",
+    type: frame.type === "SLIDE" ? "SLIDE" : "FRAME",
     bounds,
     children: frame.children.map((child) => normalizeNode(child, [frame.name])),
   };
