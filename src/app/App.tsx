@@ -288,9 +288,22 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
   issues: Issue[]; slideCount: number;
   onDetail: (issue: Issue) => void; onRestart: () => void;
 }) {
-  const [open, setOpen] = useState<IssueGroup | null>("visual");
+  const slides = groupIssuesBySlide(issues);
+  const [activeSlide, setActiveSlide] = useState(slides[0]?.name ?? "");
+  const [open, setOpen] = useState<IssueGroup | null>(getFirstIssueGroup(slides[0]?.issues ?? []));
   const groups: IssueGroup[] = ["visual", "text", "structure", "interactive", "export"];
   const score = computeScore(issues);
+  const activeSlideData = slides.find(slide => slide.name === activeSlide) ?? slides[0];
+
+  useEffect(() => {
+    if (!activeSlideData && activeSlide) {
+      setActiveSlide("");
+    }
+
+    if (activeSlideData && activeSlide !== activeSlideData.name) {
+      setActiveSlide(activeSlideData.name);
+    }
+  }, [activeSlide, activeSlideData]);
 
   return (
     <div className="flex flex-col">
@@ -302,6 +315,35 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
         </div>
       </div>
 
+      {issues.length > 0 && (
+        <div className="px-4 py-2 border-b border-white/[0.05] overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          <div className="flex gap-1.5 min-w-max">
+            {slides.map((slide, index) => {
+              const isActive = slide.name === activeSlideData?.name;
+              const criticalCount = slide.issues.filter(issue => issue.severity === "critical").length;
+              return (
+                <button key={slide.name} onClick={() => { setActiveSlide(slide.name); setOpen(getFirstIssueGroup(slide.issues)); }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition-colors ${
+                    isActive ? "border-lime-400/45 bg-lime-400/10" : "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]"
+                  }`}>
+                  <span className={`text-[10px] font-mono ${isActive ? "text-lime-300" : "text-white/25"}`}>
+                    {index + 1}
+                  </span>
+                  <span className={`max-w-[90px] truncate text-[10.5px] ${isActive ? "text-white/80" : "text-white/40"}`}>
+                    {slide.shortName}
+                  </span>
+                  <span className={`text-[9.5px] font-mono px-1.5 py-0.5 rounded ${
+                    criticalCount > 0 ? "bg-red-500/15 text-red-400" : "bg-amber-400/15 text-amber-400"
+                  }`}>
+                    {slide.issues.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="overflow-y-auto" style={{ maxHeight: 340, scrollbarWidth: "none" }}>
         {issues.length === 0 && (
           <div className="px-4 py-10 flex flex-col items-center text-center gap-2">
@@ -312,13 +354,22 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
             </p>
           </div>
         )}
-        {issues.length > 0 && groups.map(g => {
+        {issues.length > 0 && activeSlideData && (
+          <div className="px-4 py-3 border-b border-white/[0.05] bg-black/10">
+            <p className="text-[12.5px] text-white/80 font-semibold truncate">{activeSlideData.name}</p>
+            <p className="text-[10px] text-white/25 mt-0.5 font-mono">
+              {activeSlideData.issues.length} проблем · {getGroupSummary(activeSlideData.issues)}
+            </p>
+          </div>
+        )}
+        {issues.length > 0 && activeSlideData && groups.map(g => {
           const meta  = GROUP_META[g];
           const Icon  = meta.icon;
-          const items = issues.filter(i => i.group === g);
+          const items = activeSlideData.issues.filter(i => i.group === g);
           const crit  = items.filter(i => i.severity === "critical").length;
           const warn  = items.filter(i => i.severity === "warning").length;
           const isOpen = open === g;
+          if (items.length === 0) return null;
           return (
             <div key={g} className="border-b border-white/[0.05] last:border-b-0">
               <button onClick={() => setOpen(isOpen ? null : g)}
@@ -328,7 +379,7 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
                 <div className="flex items-center gap-1">
                   {crit > 0 && <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">{crit}</span>}
                   {warn > 0 && <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-400">{warn}</span>}
-                  {crit === 0 && warn === 0 && <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-emerald-400/15 text-emerald-400">OK</span>}
+                  {crit === 0 && warn === 0 && <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-blue-400/15 text-blue-400">{items.length}</span>}
                 </div>
                 {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-white/20 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />}
               </button>
@@ -342,7 +393,7 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
                         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${sc.dot}`} />
                         <div className="flex-1 min-w-0">
                           <p className="text-[11.5px] text-white/55 leading-tight truncate">{issue.title}</p>
-                          <p className="text-[10px] text-white/20 mt-0.5 truncate font-mono">{issue.slide.split(" — ")[0]}</p>
+                          <p className="text-[10px] text-white/20 mt-0.5 truncate font-mono">{issue.layer}</p>
                         </div>
                         <ChevronRight className="w-3 h-3 text-white/15 flex-shrink-0 group-hover:text-white/35 transition-colors" />
                       </button>
@@ -366,6 +417,41 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
       </div>
     </div>
   );
+}
+
+function groupIssuesBySlide(issues: Issue[]) {
+  const map = new Map<string, Issue[]>();
+
+  for (const issue of issues) {
+    const key = issue.slide || "Без слайда";
+    map.set(key, [...(map.get(key) ?? []), issue]);
+  }
+
+  return Array.from(map.entries()).map(([name, slideIssues]) => ({
+    name,
+    shortName: shortenSlideName(name),
+    issues: slideIssues,
+  }));
+}
+
+function shortenSlideName(name: string): string {
+  return name.replace(/^Слайд\s*/i, "").replace(/^Slide\s*/i, "").trim() || name;
+}
+
+function getFirstIssueGroup(issues: Issue[]): IssueGroup | null {
+  return issues[0]?.group ?? null;
+}
+
+function getGroupSummary(issues: Issue[]): string {
+  const counts = issues.reduce<Record<IssueGroup, number>>((acc, issue) => {
+    acc[issue.group] += 1;
+    return acc;
+  }, { visual: 0, text: 0, structure: 0, interactive: 0, export: 0 });
+
+  return (Object.entries(counts) as Array<[IssueGroup, number]>)
+    .filter(([, count]) => count > 0)
+    .map(([group, count]) => `${GROUP_META[group].label}: ${count}`)
+    .join(" · ");
 }
 
 // ─── Step: Detail ─────────────────────────────────────────────────────────

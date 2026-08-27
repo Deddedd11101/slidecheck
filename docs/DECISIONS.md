@@ -37,3 +37,9 @@ Reason: a small working path from Figma document to UI finding is more valuable 
 Decision: rule titles, explanations, and fix hints are written in Russian. Rule IDs remain English.
 
 Reason: the plugin is for an internal Russian-speaking team, while English IDs are better as stable technical keys.
+
+## 2026-08-27: Group Findings By Slide First
+
+Decision: the issues screen groups findings by slide/frame first, then by issue category inside the selected slide.
+
+Reason: designers fix presentations slide by slide. Category-first grouping made full-page scans feel duplicated and hard to navigate.
