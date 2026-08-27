@@ -31,3 +31,9 @@ Reason: local Figma loading depends on the manifest paths. Generated intermediat
 Decision: implement UI/plugin messaging, a Figma Design adapter, and scanner integration before expanding the rule catalog.
 
 Reason: a small working path from Figma document to UI finding is more valuable than a large disconnected rule list.
+
+## 2026-08-27: Russian User-Facing Rule Copy
+
+Decision: rule titles, explanations, and fix hints are written in Russian. Rule IDs remain English.
+
+Reason: the plugin is for an internal Russian-speaking team, while English IDs are better as stable technical keys.

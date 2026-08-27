@@ -20,6 +20,8 @@ Confidence: confirmed | likely | needs-test
 
 ## Engineering Rule Metadata
 
+User-facing fields must be written in Russian. Rule IDs stay in English because they are stable technical identifiers used by code, tests, and future migrations.
+
 ```ts
 export interface RuleDefinition {
   id: string;
@@ -61,9 +63,9 @@ A candidate becomes an MVP rule only when:
   id: "visual.gradient-fill",
   group: "visual",
   severity: "warning",
-  title: "Gradient fill may change in PPTX",
-  why: "Gradient fills can degrade or be converted when exported to PowerPoint.",
-  fixHint: "Replace the gradient with a solid fill or rasterize the object."
+  title: "Градиент может измениться в PPTX",
+  why: "Градиентные заливки могут упроститься, исказиться или превратиться в сплошной цвет при экспорте в PowerPoint.",
+  fixHint: "Замените градиент на сплошной цвет или растеризуйте объект перед экспортом."
 }
 ```
 
@@ -72,4 +74,3 @@ Checker condition:
 ```ts
 node.fills contains a paint with type starting with "GRADIENT_"
 ```
-
