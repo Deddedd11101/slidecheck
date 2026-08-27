@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "build:plugin": "node scripts/build-plugin.mjs",
-    "dev": "vite"
+    "dev": "vite",
+    "test": "vitest run"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -72,7 +73,8 @@
     "esbuild": "^0.28.1",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^4.1.11"
   },
   "peerDependencies": {
     "react": "18.3.1",
