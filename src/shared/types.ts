@@ -33,6 +33,11 @@ export interface NormalizedPaint {
   visible?: boolean;
 }
 
+export interface NormalizedEffect {
+  type: string;
+  visible?: boolean;
+}
+
 export interface NormalizedTextStyle {
   fontFamily?: string;
   fontPostScriptName?: string;
@@ -44,9 +49,13 @@ export interface NormalizedNode {
   name: string;
   type: string;
   path: string[];
+  visible?: boolean;
+  opacity?: number;
+  blendMode?: string;
+  isMask?: boolean;
   bounds?: NormalizedBounds;
   fills?: NormalizedPaint[];
-  effects?: Array<{ type: string; visible?: boolean }>;
+  effects?: NormalizedEffect[];
   textStyle?: NormalizedTextStyle;
   children?: NormalizedNode[];
 }
@@ -62,4 +71,3 @@ export interface NormalizedSlide {
 export interface NormalizedDocument {
   slides: NormalizedSlide[];
 }
-

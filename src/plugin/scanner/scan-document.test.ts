@@ -97,5 +97,111 @@ describe("scanDocument", () => {
 
     expect(scanDocument(document)).toEqual([]);
   });
-});
 
+  it("reports visual effects and masks", () => {
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Visual",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+          children: [
+            {
+              id: "mask-1",
+              name: "Image mask",
+              type: "RECTANGLE",
+              path: ["Visual", "Image mask"],
+              isMask: true,
+            },
+            {
+              id: "blur-1",
+              name: "Glass card",
+              type: "FRAME",
+              path: ["Visual", "Glass card"],
+              effects: [{ type: "BACKGROUND_BLUR" }, { type: "DROP_SHADOW" }, { type: "INNER_SHADOW" }],
+            },
+            {
+              id: "blend-1",
+              name: "Overlay",
+              type: "RECTANGLE",
+              path: ["Visual", "Overlay"],
+              blendMode: "MULTIPLY",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(scanDocument(document).map((finding) => finding.ruleId)).toEqual([
+      "visual.mask",
+      "visual.background-blur",
+      "visual.multiple-shadows",
+      "structure.nested-frame",
+      "visual.blend-mode",
+    ]);
+  });
+
+  it("reports non-system fonts and text outside slide bounds", () => {
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Typography",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+          children: [
+            {
+              id: "text-1",
+              name: "Headline",
+              type: "TEXT",
+              path: ["Typography", "Headline"],
+              bounds: { x: 100, y: 100, width: 400, height: 80 },
+              textStyle: { fontFamily: "Neue Montreal", fontPostScriptName: "Neue Montreal Bold" },
+            },
+            {
+              id: "text-2",
+              name: "Off-slide caption",
+              type: "TEXT",
+              path: ["Typography", "Off-slide caption"],
+              bounds: { x: -50, y: 100, width: 400, height: 80 },
+              textStyle: { fontFamily: "Arial", fontPostScriptName: "ArialMT" },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(scanDocument(document).map((finding) => finding.ruleId)).toEqual([
+      "text.non-system-font",
+      "text.outside-slide-bounds",
+    ]);
+  });
+
+  it("reports non-16:9 slides and non-text objects outside slide bounds", () => {
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Wrong size",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width: 1280, height: 800 },
+          children: [
+            {
+              id: "shape-1",
+              name: "Outside decoration",
+              type: "ELLIPSE",
+              path: ["Wrong size", "Outside decoration"],
+              bounds: { x: 1250, y: 200, width: 200, height: 200 },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(scanDocument(document).map((finding) => finding.ruleId)).toEqual([
+      "structure.non-16-9-slide",
+      "structure.object-outside-slide-bounds",
+    ]);
+  });
+});

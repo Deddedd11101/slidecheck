@@ -42,7 +42,20 @@ function normalizeNode(node: SceneNode, parentPath: string[]): NormalizedNode {
     name: node.name,
     type: node.type,
     path,
+    visible: node.visible,
   };
+
+  if ("opacity" in node) {
+    normalized.opacity = node.opacity;
+  }
+
+  if ("blendMode" in node) {
+    normalized.blendMode = node.blendMode;
+  }
+
+  if ("isMask" in node) {
+    normalized.isMask = node.isMask;
+  }
 
   if ("absoluteBoundingBox" in node && node.absoluteBoundingBox) {
     normalized.bounds = node.absoluteBoundingBox;
@@ -94,4 +107,3 @@ function normalizeTextStyle(node: TextNode) {
 function hasChildren(node: SceneNode): node is NodeWithChildren {
   return "children" in node && Array.isArray(node.children);
 }
-

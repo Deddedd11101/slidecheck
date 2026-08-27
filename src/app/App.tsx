@@ -194,38 +194,47 @@ function ScanStep({ scope, onDone, onBack }: {
   }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      if (completedRef.current) return;
-
-      completedRef.current = true;
-      onDone(MOCK_ISSUES, 12);
-    }, 2500);
-
     const handleMessage = (event: MessageEvent) => {
       const message = event.data?.pluginMessage as PluginToUiMessage | undefined;
       if (!message || completedRef.current) return;
 
       if (message.type === "SCAN_RESULT") {
         completedRef.current = true;
-        window.clearTimeout(timeout);
         onDone(message.issues, message.slideCount);
       }
 
       if (message.type === "SCAN_ERROR") {
         completedRef.current = true;
-        window.clearTimeout(timeout);
         setScanError(message.message);
       }
     };
 
     window.addEventListener("message", handleMessage);
-    postToPlugin({ type: "SCAN_REQUEST", scope });
+
+    if (isStandaloneBrowser()) {
+      const timeout = window.setTimeout(() => {
+        if (completedRef.current) return;
+
+        completedRef.current = true;
+        onDone(MOCK_ISSUES, 12);
+      }, 1200);
+
+      return () => {
+        window.clearTimeout(timeout);
+        window.removeEventListener("message", handleMessage);
+      };
+    }
 
     return () => {
-      window.clearTimeout(timeout);
       window.removeEventListener("message", handleMessage);
     };
   }, [onDone, scope]);
+
+  useEffect(() => {
+    if (!isStandaloneBrowser()) {
+      postToPlugin({ type: "SCAN_REQUEST", scope });
+    }
+  }, [scope]);
 
   return (
     <div className="flex flex-col gap-5 px-4 py-5">
@@ -275,9 +284,9 @@ function ScanStep({ scope, onDone, onBack }: {
 
 // ─── Step: Issues ─────────────────────────────────────────────────────────
 
-function IssuesStep({ issues, slideCount, onDetail, onFix }: {
+function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
   issues: Issue[]; slideCount: number;
-  onDetail: (issue: Issue) => void; onFix: () => void;
+  onDetail: (issue: Issue) => void; onRestart: () => void;
 }) {
   const [open, setOpen] = useState<IssueGroup | null>("visual");
   const groups: IssueGroup[] = ["visual", "text", "structure", "interactive", "export"];
@@ -294,7 +303,16 @@ function IssuesStep({ issues, slideCount, onDetail, onFix }: {
       </div>
 
       <div className="overflow-y-auto" style={{ maxHeight: 340, scrollbarWidth: "none" }}>
-        {groups.map(g => {
+        {issues.length === 0 && (
+          <div className="px-4 py-10 flex flex-col items-center text-center gap-2">
+            <CheckCircle className="w-8 h-8 text-emerald-400" />
+            <p className="text-[13px] text-white/75 font-semibold">Проблем не найдено</p>
+            <p className="text-[11px] text-white/30 leading-relaxed">
+              Сканер не нашёл известных рисков PPTX-экспорта в выбранном наборе фреймов.
+            </p>
+          </div>
+        )}
+        {issues.length > 0 && groups.map(g => {
           const meta  = GROUP_META[g];
           const Icon  = meta.icon;
           const items = issues.filter(i => i.group === g);
@@ -337,8 +355,14 @@ function IssuesStep({ issues, slideCount, onDetail, onFix }: {
         })}
       </div>
 
-      <div className="px-4 py-3 border-t border-white/[0.05]">
-        <PrimaryBtn onClick={onFix}>Выбрать режим исправления →</PrimaryBtn>
+      <div className="px-4 py-3 border-t border-white/[0.05] space-y-2">
+        {issues.length > 0 && (
+          <button disabled
+            className="w-full bg-white/[0.03] border border-white/[0.06] text-white/25 text-[12px] font-medium py-2.5 rounded-xl">
+            Автоисправления будут во второй итерации
+          </button>
+        )}
+        <GhostBtn onClick={onRestart}>Новая проверка</GhostBtn>
       </div>
     </div>
   );
@@ -346,8 +370,8 @@ function IssuesStep({ issues, slideCount, onDetail, onFix }: {
 
 // ─── Step: Detail ─────────────────────────────────────────────────────────
 
-function DetailStep({ issue, onBack, onFix, onSelect }: {
-  issue: Issue; onBack: () => void; onFix: () => void; onSelect: (nodeId: string) => void;
+function DetailStep({ issue, onBack, onSelect }: {
+  issue: Issue; onBack: () => void; onSelect: (nodeId: string) => void;
 }) {
   const sc = SEV_CONFIG[issue.severity];
   return (
@@ -692,10 +716,10 @@ export default function App() {
         {step === "issues" && (
           <IssuesStep issues={issues} slideCount={slideCount}
             onDetail={(iss) => { setDetail(iss); setStep("detail"); }}
-            onFix={() => setStep("fixmode")} />
+            onRestart={() => setStep("source")} />
         )}
         {step === "detail" && detail && (
-          <DetailStep issue={detail} onBack={() => setStep("issues")} onFix={() => setStep("fixmode")} onSelect={selectNode} />
+          <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode} />
         )}
         {step === "fixmode" && (
           <FixModeStep onNext={() => setStep("applying")} />
@@ -717,4 +741,8 @@ export default function App() {
 
 function postToPlugin(message: UiToPluginMessage): void {
   window.parent?.postMessage({ pluginMessage: message }, "*");
+}
+
+function isStandaloneBrowser(): boolean {
+  return window.parent === window;
 }

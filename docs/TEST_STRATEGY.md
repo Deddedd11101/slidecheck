@@ -57,5 +57,4 @@ pnpm test
 pnpm build:plugin
 ```
 
-The current project does not yet have a test runner configured.
-
+Manual smoke testing is documented in [SMOKE_TEST.md](SMOKE_TEST.md).
