@@ -7,19 +7,15 @@ import {
   Copy, FileText, ExternalLink, Shield, Sliders,
   Loader2, Circle, XCircle,
 } from "lucide-react";
+import type { IssueGroup } from "../shared/types";
+import type { IssueDto, PluginToUiMessage, ScanScope, UiToPluginMessage } from "../shared/messages";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 type WizardStep = "source" | "scan" | "issues" | "detail" | "fixmode" | "applying" | "final";
 type FixMode = "editable" | "fidelity" | "balanced";
-type Severity = "critical" | "warning" | "suggestion";
-type IssueGroup = "visual" | "text" | "structure" | "interactive";
 
-interface Issue {
-  id: string; group: IssueGroup; severity: Severity;
-  title: string; slide: string; layer: string;
-  why: string; fix: string; nodeId?: string;
-}
+type Issue = IssueDto;
 
 // ─── Mock data ─────────────────────────────────────────────────────────────
 
@@ -45,6 +41,7 @@ const GROUP_META: Record<IssueGroup, { label: string; icon: React.ComponentType<
   text:        { label: "Текст и шрифты",       icon: Type },
   structure:   { label: "Структура слайдов",    icon: LayoutGrid },
   interactive: { label: "Интерактивность",      icon: Zap },
+  export:      { label: "Экспорт",              icon: FileText },
 };
 
 const SEV_CONFIG = {
@@ -126,8 +123,8 @@ function StepDots({ current, total }: { current: number; total: number }) {
 
 // ─── Step: Source ─────────────────────────────────────────────────────────
 
-function SourceStep({ onNext }: { onNext: () => void }) {
-  const [selected, setSelected] = useState("page");
+function SourceStep({ onNext }: { onNext: (scope: ScanScope) => void }) {
+  const [selected, setSelected] = useState<ScanScope>("page");
   const options = [
     { id: "page",     label: "Все фреймы на странице",  desc: "Сканирует все top-level фреймы" },
     { id: "selected", label: "Только выбранные фреймы", desc: "Сначала выдели нужные фреймы в Figma" },
@@ -139,7 +136,7 @@ function SourceStep({ onNext }: { onNext: () => void }) {
       </p>
       <div className="space-y-2">
         {options.map(opt => (
-          <button key={opt.id} onClick={() => setSelected(opt.id)}
+          <button key={opt.id} onClick={() => setSelected(opt.id as ScanScope)}
             className={`w-full text-left px-3.5 py-3.5 rounded-xl border transition-all ${
               selected === opt.id ? "border-lime-500/50 bg-lime-500/8" : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
             }`}>
@@ -157,7 +154,7 @@ function SourceStep({ onNext }: { onNext: () => void }) {
           </button>
         ))}
       </div>
-      <PrimaryBtn onClick={onNext}>Начать сканирование →</PrimaryBtn>
+      <PrimaryBtn onClick={() => onNext(selected)}>Начать сканирование →</PrimaryBtn>
     </div>
   );
 }
@@ -173,12 +170,15 @@ const SCAN_CHECKS = [
   { id: "interactive", label: "Интерактивность" },
 ];
 
-function ScanStep({ onDone, onBack }: {
-  onDone: () => void;
+function ScanStep({ scope, onDone, onBack }: {
+  scope: ScanScope;
+  onDone: (issues: Issue[], slideCount: number) => void;
   onBack: () => void;
 }) {
   const [currentCheck, setCurrentCheck] = useState(0);
   const [allDone, setAllDone] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const completedRef = useRef(false);
 
   useEffect(() => {
     let idx = 0;
@@ -188,11 +188,44 @@ function ScanStep({ onDone, onBack }: {
       if (idx >= SCAN_CHECKS.length) {
         clearInterval(tick);
         setAllDone(true);
-        setTimeout(onDone, 600);
       }
     }, 380);
     return () => clearInterval(tick);
-  }, [onDone]);
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      if (completedRef.current) return;
+
+      completedRef.current = true;
+      onDone(MOCK_ISSUES, 12);
+    }, 2500);
+
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data?.pluginMessage as PluginToUiMessage | undefined;
+      if (!message || completedRef.current) return;
+
+      if (message.type === "SCAN_RESULT") {
+        completedRef.current = true;
+        window.clearTimeout(timeout);
+        onDone(message.issues, message.slideCount);
+      }
+
+      if (message.type === "SCAN_ERROR") {
+        completedRef.current = true;
+        window.clearTimeout(timeout);
+        setScanError(message.message);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    postToPlugin({ type: "SCAN_REQUEST", scope });
+
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [onDone, scope]);
 
   return (
     <div className="flex flex-col gap-5 px-4 py-5">
@@ -227,6 +260,14 @@ function ScanStep({ onDone, onBack }: {
           );
         })}
       </div>
+      {scanError && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2">
+          <p className="text-[11px] text-red-300 leading-relaxed">{scanError}</p>
+          <button onClick={onBack} className="mt-2 text-[11px] text-white/45 hover:text-white/70">
+            Вернуться к выбору источника
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -239,7 +280,7 @@ function IssuesStep({ issues, slideCount, onDetail, onFix }: {
   onDetail: (issue: Issue) => void; onFix: () => void;
 }) {
   const [open, setOpen] = useState<IssueGroup | null>("visual");
-  const groups: IssueGroup[] = ["visual", "text", "structure", "interactive"];
+  const groups: IssueGroup[] = ["visual", "text", "structure", "interactive", "export"];
   const score = computeScore(issues);
 
   return (
@@ -305,8 +346,8 @@ function IssuesStep({ issues, slideCount, onDetail, onFix }: {
 
 // ─── Step: Detail ─────────────────────────────────────────────────────────
 
-function DetailStep({ issue, onBack, onFix }: {
-  issue: Issue; onBack: () => void; onFix: () => void;
+function DetailStep({ issue, onBack, onFix, onSelect }: {
+  issue: Issue; onBack: () => void; onFix: () => void; onSelect: (nodeId: string) => void;
 }) {
   const sc = SEV_CONFIG[issue.severity];
   return (
@@ -340,7 +381,7 @@ function DetailStep({ issue, onBack, onFix }: {
       <div className="px-4 py-3.5 space-y-2">
         <div className="grid grid-cols-3 gap-1.5">
           {[
-            { icon: ZoomIn, label: "К слою",       action: () => {} },
+            { icon: ZoomIn, label: "К слою",       action: () => { if (issue.nodeId) onSelect(issue.nodeId); } },
             { icon: EyeOff, label: "Игнорировать", action: onBack },
           ].map(({ icon: Icon, label, action }) => (
             <button key={label} onClick={action}
@@ -581,8 +622,11 @@ export default function App() {
   const [detail, setDetail]         = useState<Issue | null>(null);
   const [fixedCount, setFixedCount] = useState(0);
   const [copyPageName, setCopyPageName] = useState("");
+  const [issues, setIssues] = useState<Issue[]>(MOCK_ISSUES);
+  const [slideCount, setSlideCount] = useState(12);
+  const [scanScope, setScanScope] = useState<ScanScope>("page");
 
-  const scoreBefore = computeScore(MOCK_ISSUES);
+  const scoreBefore = computeScore(issues);
   const stepIdx     = STEP_ORDER.indexOf(step === "detail" ? "issues" : step);
   const canGoBack = ["detail", "fixmode", "scan", "issues"].includes(step);
 
@@ -593,7 +637,22 @@ export default function App() {
     if (step === "issues")  setStep("source");
   }
 
-  const remainingIssues = MOCK_ISSUES.filter(i => i.severity === "critical" && i.group === "text");
+  const remainingIssues = issues.filter(i => i.severity === "critical" && i.group === "text");
+
+  function startScan(scope: ScanScope) {
+    setScanScope(scope);
+    setStep("scan");
+  }
+
+  function finishScan(nextIssues: Issue[], nextSlideCount: number) {
+    setIssues(nextIssues);
+    setSlideCount(nextSlideCount);
+    setStep("issues");
+  }
+
+  function selectNode(nodeId: string) {
+    postToPlugin({ type: "SELECT_NODE_REQUEST", nodeId });
+  }
 
   return (
     <div className="w-full h-screen flex flex-col bg-[#111111] overflow-hidden"
@@ -625,18 +684,18 @@ export default function App() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         {step === "source" && (
-          <SourceStep onNext={() => setStep("scan")} />
+          <SourceStep onNext={startScan} />
         )}
         {step === "scan" && (
-          <ScanStep onDone={() => setStep("issues")} onBack={() => setStep("source")} key="scan" />
+          <ScanStep scope={scanScope} onDone={finishScan} onBack={() => setStep("source")} key="scan" />
         )}
         {step === "issues" && (
-          <IssuesStep issues={MOCK_ISSUES} slideCount={12}
+          <IssuesStep issues={issues} slideCount={slideCount}
             onDetail={(iss) => { setDetail(iss); setStep("detail"); }}
             onFix={() => setStep("fixmode")} />
         )}
         {step === "detail" && detail && (
-          <DetailStep issue={detail} onBack={() => setStep("issues")} onFix={() => setStep("fixmode")} />
+          <DetailStep issue={detail} onBack={() => setStep("issues")} onFix={() => setStep("fixmode")} onSelect={selectNode} />
         )}
         {step === "fixmode" && (
           <FixModeStep onNext={() => setStep("applying")} />
@@ -654,4 +713,8 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+function postToPlugin(message: UiToPluginMessage): void {
+  window.parent?.postMessage({ pluginMessage: message }, "*");
 }

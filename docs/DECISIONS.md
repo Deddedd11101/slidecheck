@@ -26,3 +26,8 @@ Decision: keep the final Figma plugin build outputs in the repository for now.
 
 Reason: local Figma loading depends on the manifest paths. Generated intermediate folders remain ignored.
 
+## 2026-08-27: Start With One Vertical Scan Slice
+
+Decision: implement UI/plugin messaging, a Figma Design adapter, and scanner integration before expanding the rule catalog.
+
+Reason: a small working path from Figma document to UI finding is more valuable than a large disconnected rule list.
