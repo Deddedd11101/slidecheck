@@ -40,6 +40,7 @@ Load `manifest.json` in Figma via Plugins -> Development.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Rule format](docs/RULES_FORMAT.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
+- [Development workflow](docs/DEVELOPMENT.md)
 - [Versioning](docs/VERSIONING.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture decisions](docs/DECISIONS.md)
