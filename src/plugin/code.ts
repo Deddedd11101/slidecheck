@@ -71,10 +71,69 @@ async function selectNode(nodeId: string): Promise<void> {
   }
 
   figma.currentPage.selection = [node];
-  figma.viewport.scrollAndZoomIntoView([node]);
+  focusNodeSmooth(node);
   postToUi({ type: "SELECT_NODE_RESULT", nodeId });
 }
 
 function isSelectableSceneNode(node: BaseNode): node is SceneNode {
   return "type" in node && "visible" in node && "removed" in node && node.removed === false;
+}
+
+function focusNodeSmooth(node: SceneNode): void {
+  if (!("absoluteBoundingBox" in node) || !node.absoluteBoundingBox) {
+    figma.viewport.scrollAndZoomIntoView([node]);
+    return;
+  }
+
+  const bounds = node.absoluteBoundingBox;
+  const targetCenter = {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  };
+  const targetZoom = getTargetZoom(bounds);
+  const startCenter = figma.viewport.center;
+  const startZoom = figma.viewport.zoom;
+  const durationMs = 280;
+  const startedAt = Date.now();
+
+  const step = () => {
+    const elapsed = Date.now() - startedAt;
+    const progress = Math.min(elapsed / durationMs, 1);
+    const eased = easeOutCubic(progress);
+
+    figma.viewport.center = {
+      x: lerp(startCenter.x, targetCenter.x, eased),
+      y: lerp(startCenter.y, targetCenter.y, eased),
+    };
+    figma.viewport.zoom = lerp(startZoom, targetZoom, eased);
+
+    if (progress < 1) {
+      setTimeout(step, 16);
+    }
+  };
+
+  step();
+}
+
+function getTargetZoom(bounds: { width: number; height: number }): number {
+  const viewportBounds = figma.viewport.bounds;
+  const padding = 1.8;
+  const fitZoom = Math.min(
+    viewportBounds.width / Math.max(bounds.width * padding, 1),
+    viewportBounds.height / Math.max(bounds.height * padding, 1),
+  );
+
+  return clamp(fitZoom, 0.35, 2);
+}
+
+function easeOutCubic(value: number): number {
+  return 1 - Math.pow(1 - value, 3);
+}
+
+function lerp(from: number, to: number, progress: number): number {
+  return from + (to - from) * progress;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
