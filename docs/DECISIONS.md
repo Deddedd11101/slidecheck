@@ -43,3 +43,9 @@ Reason: the plugin is for an internal Russian-speaking team, while English IDs a
 Decision: the issues screen groups findings by slide/frame first, then by issue category inside the selected slide.
 
 Reason: designers fix presentations slide by slide. Category-first grouping made full-page scans feel duplicated and hard to navigate.
+
+## 2026-09-02: Ignore Is Session-Only
+
+Decision: the UI can hide individual findings in the current scan result, but ignores are not persisted to the Figma file yet.
+
+Reason: early rule tuning needs a quick way to reduce noise without permanently suppressing problems or writing plugin metadata into user files.

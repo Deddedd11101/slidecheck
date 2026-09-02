@@ -284,9 +284,10 @@ function ScanStep({ scope, onDone, onBack }: {
 
 // ─── Step: Issues ─────────────────────────────────────────────────────────
 
-function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
+function IssuesStep({ issues, slideCount, ignoredCount, onDetail, onRestart, onResetIgnored }: {
   issues: Issue[]; slideCount: number;
-  onDetail: (issue: Issue) => void; onRestart: () => void;
+  ignoredCount: number;
+  onDetail: (issue: Issue) => void; onRestart: () => void; onResetIgnored: () => void;
 }) {
   const slides = groupIssuesBySlide(issues);
   const [activeSlide, setActiveSlide] = useState(slides[0]?.name ?? "");
@@ -311,7 +312,9 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
         <ScoreRing score={score} size={40} />
         <div className="flex-1">
           <p className="text-[11.5px] text-white/60 font-medium leading-none">Готовность к PPTX</p>
-          <p className="text-[10px] text-white/20 mt-0.5 font-mono">{slideCount} слайдов · {issues.length} проблем</p>
+          <p className="text-[10px] text-white/20 mt-0.5 font-mono">
+            {slideCount} слайдов · {issues.length} проблем{ignoredCount > 0 ? ` · скрыто: ${ignoredCount}` : ""}
+          </p>
         </div>
       </div>
 
@@ -413,6 +416,12 @@ function IssuesStep({ issues, slideCount, onDetail, onRestart }: {
             Автоисправления будут во второй итерации
           </button>
         )}
+        {ignoredCount > 0 && (
+          <button onClick={onResetIgnored}
+            className="w-full border border-white/[0.08] hover:border-white/15 hover:bg-white/[0.04] text-white/35 hover:text-white/60 text-[11px] font-medium py-2.5 rounded-xl transition-all">
+            Вернуть скрытые проблемы
+          </button>
+        )}
         <GhostBtn onClick={onRestart}>Новая проверка</GhostBtn>
       </div>
     </div>
@@ -456,8 +465,8 @@ function getGroupSummary(issues: Issue[]): string {
 
 // ─── Step: Detail ─────────────────────────────────────────────────────────
 
-function DetailStep({ issue, onBack, onSelect }: {
-  issue: Issue; onBack: () => void; onSelect: (nodeId: string) => void;
+function DetailStep({ issue, onBack, onSelect, onIgnore }: {
+  issue: Issue; onBack: () => void; onSelect: (nodeId: string) => void; onIgnore: (issueId: string) => void;
 }) {
   const sc = SEV_CONFIG[issue.severity];
   return (
@@ -492,7 +501,7 @@ function DetailStep({ issue, onBack, onSelect }: {
         <div className="grid grid-cols-3 gap-1.5">
           {[
             { icon: ZoomIn, label: "К слою",       action: () => { if (issue.nodeId) onSelect(issue.nodeId); } },
-            { icon: EyeOff, label: "Игнорировать", action: onBack },
+            { icon: EyeOff, label: "Скрыть", action: () => onIgnore(issue.id) },
           ].map(({ icon: Icon, label, action }) => (
             <button key={label} onClick={action}
               className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl border border-white/[0.07] hover:border-white/15 hover:bg-white/[0.04] text-white/35 hover:text-white/60 transition-all">
@@ -733,11 +742,13 @@ export default function App() {
   const [fixedCount, setFixedCount] = useState(0);
   const [copyPageName, setCopyPageName] = useState("");
   const [issues, setIssues] = useState<Issue[]>(MOCK_ISSUES);
+  const [ignoredIssueIds, setIgnoredIssueIds] = useState<Set<string>>(new Set());
   const [slideCount, setSlideCount] = useState(12);
   const [scanScope, setScanScope] = useState<ScanScope>("page");
   const [notice, setNotice] = useState<string | null>(null);
 
-  const scoreBefore = computeScore(issues);
+  const visibleIssues = issues.filter(issue => !ignoredIssueIds.has(issue.id));
+  const scoreBefore = computeScore(visibleIssues);
   const stepIdx     = STEP_ORDER.indexOf(step === "detail" ? "issues" : step);
   const canGoBack = ["detail", "fixmode", "scan", "issues"].includes(step);
 
@@ -748,7 +759,7 @@ export default function App() {
     if (step === "issues")  setStep("source");
   }
 
-  const remainingIssues = issues.filter(i => i.severity === "critical" && i.group === "text");
+  const remainingIssues = visibleIssues.filter(i => i.severity === "critical" && i.group === "text");
 
   function startScan(scope: ScanScope) {
     setScanScope(scope);
@@ -757,6 +768,7 @@ export default function App() {
 
   function finishScan(nextIssues: Issue[], nextSlideCount: number) {
     setIssues(nextIssues);
+    setIgnoredIssueIds(new Set());
     setSlideCount(nextSlideCount);
     setStep("issues");
   }
@@ -764,6 +776,16 @@ export default function App() {
   function selectNode(nodeId: string) {
     setNotice(null);
     postToPlugin({ type: "SELECT_NODE_REQUEST", nodeId });
+  }
+
+  function ignoreIssue(issueId: string) {
+    setIgnoredIssueIds(prev => {
+      const next = new Set(prev);
+      next.add(issueId);
+      return next;
+    });
+    setDetail(null);
+    setStep("issues");
   }
 
   useEffect(() => {
@@ -825,12 +847,13 @@ export default function App() {
           <ScanStep scope={scanScope} onDone={finishScan} onBack={() => setStep("source")} key="scan" />
         )}
         {step === "issues" && (
-          <IssuesStep issues={issues} slideCount={slideCount}
+          <IssuesStep issues={visibleIssues} slideCount={slideCount} ignoredCount={ignoredIssueIds.size}
             onDetail={(iss) => { setDetail(iss); setStep("detail"); }}
-            onRestart={() => setStep("source")} />
+            onRestart={() => setStep("source")}
+            onResetIgnored={() => setIgnoredIssueIds(new Set())} />
         )}
         {step === "detail" && detail && (
-          <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode} />
+          <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode} onIgnore={ignoreIssue} />
         )}
         {step === "fixmode" && (
           <FixModeStep onNext={() => setStep("applying")} />
