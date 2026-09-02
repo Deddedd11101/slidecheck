@@ -491,7 +491,7 @@
     const targetZoom = getTargetZoom(bounds);
     const startCenter = figma.viewport.center;
     const startZoom = figma.viewport.zoom;
-    const durationMs = 280;
+    const durationMs = 310;
     const startedAt = Date.now();
     const step = () => {
       const elapsed = Date.now() - startedAt;
