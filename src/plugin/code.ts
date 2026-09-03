@@ -1,4 +1,5 @@
 import { collectFigmaDocument } from "./adapter/collect-figma-document";
+import { applyFixes } from "./fixes/apply-fixes";
 import { RULES } from "./rules/registry";
 import { scanDocument } from "./scanner/scan-document";
 import type { Finding, NormalizedDocument } from "../shared/types";
@@ -35,6 +36,28 @@ figma.ui.onmessage = async (message: UiToPluginMessage) => {
       });
     }
   }
+
+  if (message.type === "APPLY_FIXES_REQUEST") {
+    try {
+      const applyResult = await applyFixes(message.targets);
+      const document = collectFigmaDocument(message.scope);
+      const findings = scanDocument(document, message.settings);
+
+      postToUi({
+        type: "APPLY_FIXES_RESULT",
+        result: {
+          ...applyResult,
+          issues: findings.map((finding) => toIssueDto(finding, document)),
+          slideCount: document.slides.length,
+        },
+      });
+    } catch (error) {
+      postToUi({
+        type: "APPLY_FIXES_ERROR",
+        message: error instanceof Error ? error.message : "Unknown autofix error",
+      });
+    }
+  }
 };
 
 function postToUi(message: PluginToUiMessage): void {
@@ -51,6 +74,7 @@ function toIssueDto(finding: Finding, document: NormalizedDocument): IssueDto {
 
   return {
     id: finding.id,
+    ruleId: finding.ruleId,
     group: rule.group,
     severity: finding.severityOverride ?? rule.severity,
     title: rule.title,
@@ -58,6 +82,8 @@ function toIssueDto(finding: Finding, document: NormalizedDocument): IssueDto {
     layer: finding.nodePath.join(" / "),
     why: rule.why,
     fix: rule.fixHint,
+    fixAvailable: Boolean(rule.autofix),
+    fixLabel: rule.autofix?.label,
     nodeId: finding.nodeId,
   };
 }

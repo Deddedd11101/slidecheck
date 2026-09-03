@@ -43,7 +43,9 @@ Create a page with at least three top-level frames:
 - A clean frame does not produce findings.
 - Clicking a finding opens detail view.
 - Clicking `К слою` selects and zooms to the affected node.
-- The issues screen does not enter fake autofix flow.
+- If supported findings exist, the issues screen shows an enabled autofix button.
+- Applying autofixes changes only supported geometry/aspect-ratio findings.
+- After applying autofixes, the plugin returns to a rescanned result state.
 
 ## Known Manual Validation Boundary
 
@@ -52,5 +54,5 @@ The following cannot be fully verified by local unit tests:
 - exact Figma node properties for masks and media;
 - selection/zoom behavior inside Figma;
 - Figma Slides node traversal;
+- real Figma API node mutation through autofixes;
 - real export behavior after PPTX export.
-

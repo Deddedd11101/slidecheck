@@ -52,6 +52,14 @@ UI finding click
   -> SELECT_NODE_REQUEST
   -> figma.currentPage.selection = [node]
   -> figma.viewport.scrollAndZoomIntoView([node])
+
+UI autofix button
+  -> APPLY_FIXES_REQUEST
+  -> plugin fix engine mutates supported nodes
+  -> collect Figma nodes again
+  -> run scanner rules again
+  -> APPLY_FIXES_RESULT
+  -> UI renders updated findings
 ```
 
 ## Rule Design
@@ -74,6 +82,26 @@ Checker logic detects the problem and emits findings:
 - evidence.
 
 This keeps UI copy stable while allowing scanner implementation to evolve.
+
+## Autofix Design
+
+Autofix support is explicit per rule through `RuleDefinition.autofix`. A rule is
+not considered fixable unless the registry declares a user-facing autofix label
+and the plugin fix engine implements the matching `ruleId`.
+
+Current supported autofixes:
+
+- `text.near-slide-edge`: move text inside the 16px safe margin;
+- `text.outside-slide-bounds`: move text back inside the 16px safe margin;
+- `structure.object-outside-slide-bounds`: move object back inside slide bounds;
+- `structure.non-16-9-slide`: resize the slide/frame to 16:9 using its current width.
+
+Current limitations:
+
+- fixes mutate the current Figma document and rely on Figma Undo for rollback;
+- mask, blur, blend-mode, gradient, nested-frame, and font fixes remain manual;
+- safe-copy workflow is a separate phase because Slides copy behavior needs
+  manual API verification.
 
 ## Scan Settings
 

@@ -56,6 +56,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Текст близко к краю слайда",
     why: "Текст рядом с краем может обрезаться после замены шрифта или изменения текстовой вёрстки в PowerPoint.",
     fixHint: "Сдвиньте текст внутрь слайда или увеличьте безопасный отступ.",
+    autofix: { label: "Сдвинуть текст внутрь безопасной зоны" },
   },
   "text.outside-slide-bounds": {
     id: "text.outside-slide-bounds",
@@ -64,6 +65,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Текст выходит за границы слайда",
     why: "Текст за пределами слайда может обрезаться или неожиданно появиться после экспорта.",
     fixHint: "Полностью переместите текст внутрь границ слайда.",
+    autofix: { label: "Вернуть текст в границы слайда" },
   },
   "text.non-system-font": {
     id: "text.non-system-font",
@@ -80,6 +82,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Слайд не в формате 16:9",
     why: "Неожиданное соотношение сторон может привести к разным размерам страниц или некорректному масштабированию в PPTX.",
     fixHint: "Измените размер слайда/фрейма на 16:9, например 1920x1080.",
+    autofix: { label: "Привести слайд к 16:9" },
   },
   "structure.object-outside-slide-bounds": {
     id: "structure.object-outside-slide-bounds",
@@ -88,6 +91,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Объект выходит за границы слайда",
     why: "Объекты за пределами слайда могут обрезаться, попасть в экспорт неожиданно или повлиять на layout слайда.",
     fixHint: "Переместите объект внутрь слайда или удалите его перед экспортом.",
+    autofix: { label: "Вернуть объект в границы слайда" },
   },
   "structure.nested-frame": {
     id: "structure.nested-frame",

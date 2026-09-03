@@ -4,18 +4,20 @@ import {
   AlertTriangle, CheckCircle, Info,
   Layers, Type, LayoutGrid, Zap,
   RotateCcw, ZoomIn, Wand2, EyeOff,
-  Copy, FileText, ExternalLink, Shield, Sliders,
+  FileText, ExternalLink, Sliders,
   Loader2, Circle, XCircle,
 } from "lucide-react";
 import type { IssueGroup } from "../shared/types";
-import type { EnabledRuleGroups, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, ScanStrictness, UiToPluginMessage } from "../shared/messages";
+import type { EnabledRuleGroups, FixRunResultDto, FixTargetDto, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, ScanStrictness, UiToPluginMessage } from "../shared/messages";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 type WizardStep = "source" | "scan" | "issues" | "detail" | "fixmode" | "applying" | "final";
-type FixMode = "editable" | "fidelity" | "balanced";
-
 type Issue = IssueDto;
+
+function isFixableIssue(issue: Issue): issue is Issue & { ruleId: string; nodeId: string } {
+  return issue.fixAvailable === true && Boolean(issue.ruleId) && Boolean(issue.nodeId);
+}
 
 // ─── Mock data ─────────────────────────────────────────────────────────────
 
@@ -348,10 +350,10 @@ function ScanStep({ scope, settings, onDone, onBack }: {
 
 // ─── Step: Issues ─────────────────────────────────────────────────────────
 
-function IssuesStep({ issues, slideCount, ignoredCount, onDetail, onRestart, onResetIgnored }: {
+function IssuesStep({ issues, slideCount, ignoredCount, fixableCount, onDetail, onFix, onRestart, onResetIgnored }: {
   issues: Issue[]; slideCount: number;
-  ignoredCount: number;
-  onDetail: (issue: Issue) => void; onRestart: () => void; onResetIgnored: () => void;
+  ignoredCount: number; fixableCount: number;
+  onDetail: (issue: Issue) => void; onFix: () => void; onRestart: () => void; onResetIgnored: () => void;
 }) {
   const slides = groupIssuesBySlide(issues);
   const [activeSlide, setActiveSlide] = useState(slides[0]?.name ?? "");
@@ -475,9 +477,9 @@ function IssuesStep({ issues, slideCount, ignoredCount, onDetail, onRestart, onR
 
       <div className="px-4 py-3 border-t border-white/[0.05] space-y-2">
         {issues.length > 0 && (
-          <button disabled
-            className="w-full bg-white/[0.03] border border-white/[0.06] text-white/25 text-[12px] font-medium py-2.5 rounded-xl">
-            Автоисправления будут во второй итерации
+          <button onClick={onFix} disabled={fixableCount === 0}
+            className="w-full bg-lime-400 hover:bg-lime-300 active:bg-lime-500 disabled:bg-white/[0.03] border border-transparent disabled:border-white/[0.06] text-black disabled:text-white/25 text-[12px] font-medium py-2.5 rounded-xl transition-colors">
+            {fixableCount > 0 ? `Исправить доступные проблемы: ${fixableCount}` : "Для этих проблем пока нет автофиксов"}
           </button>
         )}
         {ignoredCount > 0 && (
@@ -529,8 +531,8 @@ function getGroupSummary(issues: Issue[]): string {
 
 // ─── Step: Detail ─────────────────────────────────────────────────────────
 
-function DetailStep({ issue, onBack, onSelect, onIgnore }: {
-  issue: Issue; onBack: () => void; onSelect: (nodeId: string) => void; onIgnore: (issueId: string) => void;
+function DetailStep({ issue, onBack, onSelect, onFix, onIgnore }: {
+  issue: Issue; onBack: () => void; onSelect: (nodeId: string) => void; onFix: (issue: Issue) => void; onIgnore: (issueId: string) => void;
 }) {
   const sc = SEV_CONFIG[issue.severity];
   return (
@@ -560,15 +562,21 @@ function DetailStep({ issue, onBack, onSelect, onIgnore }: {
       <div className="px-4 py-3 border-b border-white/[0.05]">
         <p className="text-[9.5px] text-white/25 font-mono uppercase tracking-widest mb-1.5">Рекомендуемое исправление</p>
         <p className="text-[11.5px] text-white/50 leading-relaxed">{issue.fix}</p>
+        {issue.fixAvailable && issue.fixLabel && (
+          <div className="mt-2 inline-flex items-center rounded-lg bg-lime-400/10 px-2 py-1 text-[10px] text-lime-300/70">
+            Автофикс: {issue.fixLabel}
+          </div>
+        )}
       </div>
       <div className="px-4 py-3.5 space-y-2">
         <div className="grid grid-cols-3 gap-1.5">
           {[
             { icon: ZoomIn, label: "К слою",       action: () => { if (issue.nodeId) onSelect(issue.nodeId); } },
+            { icon: Wand2, label: "Исправить", action: () => onFix(issue), disabled: !isFixableIssue(issue) },
             { icon: EyeOff, label: "Скрыть", action: () => onIgnore(issue.id) },
-          ].map(({ icon: Icon, label, action }) => (
-            <button key={label} onClick={action}
-              className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl border border-white/[0.07] hover:border-white/15 hover:bg-white/[0.04] text-white/35 hover:text-white/60 transition-all">
+          ].map(({ icon: Icon, label, action, disabled }) => (
+            <button key={label} onClick={action} disabled={disabled}
+              className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl border border-white/[0.07] hover:border-white/15 hover:bg-white/[0.04] disabled:bg-white/[0.02] text-white/35 hover:text-white/60 disabled:text-white/15 transition-all">
               <Icon className="w-3.5 h-3.5" />
               <span className="text-[10px] font-medium">{label}</span>
             </button>
@@ -581,51 +589,34 @@ function DetailStep({ issue, onBack, onSelect, onIgnore }: {
 
 // ─── Step: Fix Mode ───────────────────────────────────────────────────────
 
-function FixModeStep({ onNext }: { onNext: () => void }) {
-  const [selected, setSelected] = useState<FixMode>("balanced");
-  const modes: { id: FixMode; icon: React.ComponentType<{ className?: string }>; label: string; note: string; items: string[] }[] = [
-    { id: "balanced",  icon: Sliders, label: "Сбалансированный", note: "★ Рекомендуется", items: ["Текст остаётся редактируемым", "Фоны и декор растеризуются", "Маски и blur → PNG"] },
-    { id: "editable",  icon: Type,    label: "Максимальная правка", note: "Для редактирования в PPT", items: ["Всё остаётся слоями", "Градиент → ближайший цвет", "Шрифты → системные"] },
-    { id: "fidelity",  icon: Shield,  label: "Точное воспроизведение", note: "Один в один визуально", items: ["Сложные элементы → PNG", "Меньше редактируемости"] },
+function FixModeStep({ fixableCount, onNext }: { fixableCount: number; onNext: () => void }) {
+  const items = [
+    "сдвинуть текст внутрь безопасной зоны",
+    "вернуть объекты в границы слайда",
+    "привести слайд или фрейм к 16:9",
   ];
+
   return (
     <div className="flex flex-col gap-4 px-4 py-5">
       <p className="text-[11.5px] text-white/35 leading-relaxed">
-        Плагин создаст безопасную копию. Оригинал не изменится.
+        Сейчас будут применены только безопасные алгоритмические исправления. Оригинальные слои изменятся, действие можно откатить через Undo в Figma.
       </p>
+      <div className="rounded-xl border border-lime-400/15 bg-lime-400/[0.05] px-3.5 py-3">
+        <p className="text-[12px] text-white/75 font-semibold">Доступно автофиксов: {fixableCount}</p>
+        <p className="text-[10.5px] text-white/35 mt-1 leading-relaxed">
+          Маски, blur, blend modes и шрифты пока останутся ручными, чтобы не портить визуальную точность.
+        </p>
+      </div>
       <div className="space-y-2">
-        {modes.map(mode => {
-          const Icon = mode.icon;
-          const isSel = selected === mode.id;
-          return (
-            <button key={mode.id} onClick={() => setSelected(mode.id)}
-              className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all ${
-                isSel ? "border-lime-500/50 bg-lime-500/8" : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
-              }`}>
-              <div className="flex items-start gap-3">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${isSel ? "bg-lime-500/15" : "bg-white/[0.05]"}`}>
-                  <Icon className={`w-3.5 h-3.5 ${isSel ? "text-lime-400" : "text-white/30"}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className={`text-[12px] font-semibold ${isSel ? "text-white/90" : "text-white/55"}`}>{mode.label}</p>
-                    {mode.id === "balanced" && <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-lime-500/15 text-lime-400/80">★ Рек.</span>}
-                  </div>
-                  <p className={`text-[10px] mb-1.5 ${isSel ? "text-lime-400/50" : "text-white/20"}`}>{mode.note}</p>
-                  {mode.items.map(item => (
-                    <div key={item} className="flex items-center gap-1.5">
-                      <span className={`w-0.5 h-0.5 rounded-full flex-shrink-0 ${isSel ? "bg-white/40" : "bg-white/15"}`} />
-                      <span className={`text-[10px] ${isSel ? "text-white/40" : "text-white/20"}`}>{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        {items.map(item => (
+          <div key={item} className="flex items-center gap-2.5 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-2.5">
+            <CheckCircle className="w-3.5 h-3.5 text-lime-400/70 flex-shrink-0" />
+            <span className="text-[11px] text-white/50">{item}</span>
+          </div>
+        ))}
       </div>
       <PrimaryBtn onClick={onNext}>
-        <span className="flex items-center justify-center gap-2"><Copy className="w-3.5 h-3.5" />Создать безопасную копию</span>
+        <span className="flex items-center justify-center gap-2"><Wand2 className="w-3.5 h-3.5" />Применить автофиксы</span>
       </PrimaryBtn>
     </div>
   );
@@ -634,36 +625,65 @@ function FixModeStep({ onNext }: { onNext: () => void }) {
 // ─── Step: Applying ───────────────────────────────────────────────────────
 
 const APPLY_STEPS = [
-  "Дублирую страницу…",
-  "Растеризую маски…",
-  "Обрабатываю градиенты…",
-  "Конвертирую вложенные фреймы…",
-  "Убираю элементы за краями…",
+  "Проверяю поддерживаемые правила…",
+  "Исправляю геометрию слайдов…",
+  "Возвращаю слои в границы…",
+  "Двигаю текст в безопасную зону…",
   "Повторное сканирование…",
-  "Вычисляю новый рейтинг…",
   "Готово",
 ];
 
-function ApplyingStep({ onDone }: {
-  onDone: (fixedCount: number, copyName: string) => void;
+function ApplyingStep({ scope, settings, targets, onDone, onError }: {
+  scope: ScanScope;
+  settings: ScanSettings;
+  targets: FixTargetDto[];
+  onDone: (result: FixRunResultDto) => void;
+  onError: (message: string) => void;
 }) {
   const [currentStep, setCurrentStep] = useState(0);
   const calledRef = useRef(false);
 
   useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data?.pluginMessage as PluginToUiMessage | undefined;
+      if (!message || calledRef.current) return;
+
+      if (message.type === "APPLY_FIXES_RESULT") {
+        calledRef.current = true;
+        onDone(message.result);
+      }
+
+      if (message.type === "APPLY_FIXES_ERROR") {
+        calledRef.current = true;
+        onError(message.message);
+      }
+    };
+
     let idx = 0;
     const tick = setInterval(() => {
       idx++;
       setCurrentStep(Math.min(idx, APPLY_STEPS.length - 1));
-      if (idx >= APPLY_STEPS.length) {
+      if (idx >= APPLY_STEPS.length && isStandaloneBrowser()) {
         clearInterval(tick);
         setTimeout(() => {
-          if (!calledRef.current) { calledRef.current = true; onDone(14, ""); }
+          if (!calledRef.current) {
+            calledRef.current = true;
+            onDone({ applied: targets.length, skipped: 0, issues: MOCK_ISSUES.filter(issue => !isFixableIssue(issue)), slideCount: 12 });
+          }
         }, 400);
       }
     }, 350);
-    return () => clearInterval(tick);
-  }, [onDone]);
+
+    window.addEventListener("message", handleMessage);
+    if (!isStandaloneBrowser()) {
+      postToPlugin({ type: "APPLY_FIXES_REQUEST", scope, settings, targets });
+    }
+
+    return () => {
+      clearInterval(tick);
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [onDone, onError, scope, settings, targets]);
 
   return (
     <div className="flex flex-col gap-5 px-4 py-5">
@@ -691,16 +711,16 @@ function ApplyingStep({ onDone }: {
           );
         })}
       </div>
-      <p className="text-[10.5px] text-white/20 text-center">Оригинал не изменяется</p>
+      <p className="text-[10.5px] text-white/20 text-center">Изменения можно откатить через Undo в Figma</p>
     </div>
   );
 }
 
 // ─── Step: Final ──────────────────────────────────────────────────────────
 
-function FinalStep({ onRestart, scoreBefore, fixedCount, copyPageName, remainingIssues }: {
+function FinalStep({ onRestart, scoreBefore, fixedCount, skippedCount, copyPageName, remainingIssues }: {
   onRestart: () => void;
-  scoreBefore: number; fixedCount: number;
+  scoreBefore: number; fixedCount: number; skippedCount: number;
   copyPageName: string; remainingIssues: Issue[];
 }) {
   const scoreAfter = Math.min(100, scoreBefore + Math.max(fixedCount * 2, 26));
@@ -717,11 +737,11 @@ function FinalStep({ onRestart, scoreBefore, fixedCount, copyPageName, remaining
 
   const fixedList = fixedCount > 0
     ? [`${fixedCount} элементов исправлено`]
-    : ["7 масок растеризованы в PNG", "4 градиента заменены", "2 вложенных фрейма конвертированы", "Объекты за краями удалены"];
+    : ["Автофиксы не применялись"];
 
   const remaining = remainingIssues.length > 0
     ? remainingIssues.map(i => i.title)
-    : ["Нестандартные шрифты — нужна установка на целевой машине"];
+    : ["Критичных ручных проблем не осталось"];
 
   return (
     <div className="flex flex-col">
@@ -761,6 +781,12 @@ function FinalStep({ onRestart, scoreBefore, fixedCount, copyPageName, remaining
               <span className="text-[11px] text-white/45">{item}</span>
             </div>
           ))}
+          {skippedCount > 0 && (
+            <div className="flex items-center gap-2.5">
+              <Info className="w-3 h-3 text-amber-400 flex-shrink-0" />
+              <span className="text-[11px] text-white/40">{skippedCount} проблем пропущено: нужен ручной фикс</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -804,15 +830,19 @@ export default function App() {
   const [step, setStep]             = useState<WizardStep>("source");
   const [detail, setDetail]         = useState<Issue | null>(null);
   const [fixedCount, setFixedCount] = useState(0);
+  const [skippedFixCount, setSkippedFixCount] = useState(0);
+  const [scoreBeforeFix, setScoreBeforeFix] = useState(0);
   const [copyPageName, setCopyPageName] = useState("");
   const [issues, setIssues] = useState<Issue[]>(MOCK_ISSUES);
   const [ignoredIssueIds, setIgnoredIssueIds] = useState<Set<string>>(new Set());
+  const [pendingFixTargets, setPendingFixTargets] = useState<FixTargetDto[]>([]);
   const [slideCount, setSlideCount] = useState(12);
   const [scanScope, setScanScope] = useState<ScanScope>("page");
   const [scanSettings, setScanSettings] = useState<ScanSettings>(DEFAULT_SCAN_SETTINGS);
   const [notice, setNotice] = useState<string | null>(null);
 
   const visibleIssues = issues.filter(issue => !ignoredIssueIds.has(issue.id));
+  const fixTargets = visibleIssues.filter(isFixableIssue).map(toFixTarget);
   const scoreBefore = computeScore(visibleIssues);
   const stepIdx     = STEP_ORDER.indexOf(step === "detail" ? "issues" : step);
   const canGoBack = ["detail", "fixmode", "scan", "issues"].includes(step);
@@ -851,6 +881,29 @@ export default function App() {
     });
     setDetail(null);
     setStep("issues");
+  }
+
+  function startFixes(targets = fixTargets) {
+    if (targets.length === 0) {
+      setNotice("Для выбранных проблем пока нет автофикса");
+      return;
+    }
+
+    setNotice(null);
+    setPendingFixTargets(targets);
+    setScoreBeforeFix(scoreBefore);
+    setStep("fixmode");
+  }
+
+  function finishFixes(result: FixRunResultDto) {
+    setIssues(result.issues);
+    setIgnoredIssueIds(new Set());
+    setSlideCount(result.slideCount);
+    setFixedCount(result.applied);
+    setSkippedFixCount(result.skipped);
+    setCopyPageName("");
+    setDetail(null);
+    setStep("final");
   }
 
   useEffect(() => {
@@ -912,24 +965,28 @@ export default function App() {
           <ScanStep scope={scanScope} settings={scanSettings} onDone={finishScan} onBack={() => setStep("source")} key="scan" />
         )}
         {step === "issues" && (
-          <IssuesStep issues={visibleIssues} slideCount={slideCount} ignoredCount={ignoredIssueIds.size}
+          <IssuesStep issues={visibleIssues} slideCount={slideCount} ignoredCount={ignoredIssueIds.size} fixableCount={fixTargets.length}
             onDetail={(iss) => { setDetail(iss); setStep("detail"); }}
+            onFix={() => startFixes()}
             onRestart={() => setStep("source")}
             onResetIgnored={() => setIgnoredIssueIds(new Set())} />
         )}
         {step === "detail" && detail && (
-          <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode} onIgnore={ignoreIssue} />
+          <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode}
+            onFix={(issue) => { if (isFixableIssue(issue)) startFixes([toFixTarget(issue)]); }}
+            onIgnore={ignoreIssue} />
         )}
         {step === "fixmode" && (
-          <FixModeStep onNext={() => setStep("applying")} />
+          <FixModeStep fixableCount={pendingFixTargets.length} onNext={() => setStep("applying")} />
         )}
         {step === "applying" && (
-          <ApplyingStep onDone={(cnt, name) => { setFixedCount(cnt); setCopyPageName(name); setStep("final"); }} />
+          <ApplyingStep scope={scanScope} settings={scanSettings} targets={pendingFixTargets} onDone={finishFixes}
+            onError={(message) => { setNotice(message); setStep("issues"); }} />
         )}
         {step === "final" && (
           <FinalStep
-            onRestart={() => { setStep("source"); setFixedCount(0); setCopyPageName(""); }}
-            scoreBefore={scoreBefore} fixedCount={fixedCount}
+            onRestart={() => { setStep("source"); setFixedCount(0); setSkippedFixCount(0); setPendingFixTargets([]); setCopyPageName(""); }}
+            scoreBefore={scoreBeforeFix} fixedCount={fixedCount} skippedCount={skippedFixCount}
             copyPageName={copyPageName} remainingIssues={remainingIssues}
           />
         )}
@@ -940,6 +997,14 @@ export default function App() {
 
 function postToPlugin(message: UiToPluginMessage): void {
   window.parent?.postMessage({ pluginMessage: message }, "*");
+}
+
+function toFixTarget(issue: Issue & { ruleId: string; nodeId: string }): FixTargetDto {
+  return {
+    issueId: issue.id,
+    ruleId: issue.ruleId,
+    nodeId: issue.nodeId,
+  };
 }
 
 function isStandaloneBrowser(): boolean {

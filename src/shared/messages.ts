@@ -12,6 +12,7 @@ export interface ScanSettings {
 
 export interface IssueDto {
   id: string;
+  ruleId: string;
   group: IssueGroup;
   severity: Severity;
   title: string;
@@ -19,15 +20,33 @@ export interface IssueDto {
   layer: string;
   why: string;
   fix: string;
+  fixAvailable: boolean;
+  fixLabel?: string;
   nodeId?: string;
+}
+
+export interface FixTargetDto {
+  issueId: string;
+  ruleId: string;
+  nodeId: string;
+}
+
+export interface FixRunResultDto {
+  applied: number;
+  skipped: number;
+  issues: IssueDto[];
+  slideCount: number;
 }
 
 export type UiToPluginMessage =
   | { type: "SCAN_REQUEST"; scope: ScanScope; settings: ScanSettings }
-  | { type: "SELECT_NODE_REQUEST"; nodeId: string };
+  | { type: "SELECT_NODE_REQUEST"; nodeId: string }
+  | { type: "APPLY_FIXES_REQUEST"; scope: ScanScope; settings: ScanSettings; targets: FixTargetDto[] };
 
 export type PluginToUiMessage =
   | { type: "SCAN_RESULT"; issues: IssueDto[]; slideCount: number }
   | { type: "SCAN_ERROR"; message: string }
   | { type: "SELECT_NODE_RESULT"; nodeId: string }
-  | { type: "SELECT_NODE_ERROR"; message: string };
+  | { type: "SELECT_NODE_ERROR"; message: string }
+  | { type: "APPLY_FIXES_RESULT"; result: FixRunResultDto }
+  | { type: "APPLY_FIXES_ERROR"; message: string };

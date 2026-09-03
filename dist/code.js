@@ -1,6 +1,8 @@
 "use strict";
 (() => {
   var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
   var __getOwnPropSymbols = Object.getOwnPropertySymbols;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __propIsEnum = Object.prototype.propertyIsEnumerable;
@@ -16,6 +18,7 @@
       }
     return a;
   };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
   var __async = (__this, __arguments, generator) => {
     return new Promise((resolve, reject) => {
       var fulfilled = (value) => {
@@ -141,6 +144,113 @@
     return "children" in node && Array.isArray(node.children);
   }
 
+  // src/plugin/fixes/geometry.ts
+  function getDeltaToFitBounds(bounds, container, margin) {
+    const maxX = container.x + container.width - margin - bounds.width;
+    const maxY = container.y + container.height - margin - bounds.height;
+    const minX = container.x + margin;
+    const minY = container.y + margin;
+    const targetX = clamp(bounds.x, minX, Math.max(minX, maxX));
+    const targetY = clamp(bounds.y, minY, Math.max(minY, maxY));
+    return {
+      x: targetX - bounds.x,
+      y: targetY - bounds.y
+    };
+  }
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  // src/plugin/fixes/apply-fixes.ts
+  var TEXT_SAFE_MARGIN = 16;
+  var WIDESCREEN_RATIO = 16 / 9;
+  function applyFixes(targets) {
+    return __async(this, null, function* () {
+      let applied = 0;
+      let skipped = 0;
+      const seen = /* @__PURE__ */ new Set();
+      for (const target of targets) {
+        const dedupeKey = `${target.nodeId}:${target.ruleId}`;
+        if (seen.has(dedupeKey)) {
+          continue;
+        }
+        seen.add(dedupeKey);
+        const fixed = yield applyFix(target);
+        if (fixed) {
+          applied += 1;
+        } else {
+          skipped += 1;
+        }
+      }
+      return { applied, skipped };
+    });
+  }
+  function applyFix(target) {
+    return __async(this, null, function* () {
+      const node = yield figma.getNodeByIdAsync(target.nodeId);
+      if (!node || !isSceneNode(node) || node.removed) {
+        return false;
+      }
+      if (target.ruleId === "structure.non-16-9-slide") {
+        return resizeSlideToWidescreen(node);
+      }
+      if (target.ruleId === "text.near-slide-edge" || target.ruleId === "text.outside-slide-bounds") {
+        return moveNodeInsideSlide(node, TEXT_SAFE_MARGIN);
+      }
+      if (target.ruleId === "structure.object-outside-slide-bounds") {
+        return moveNodeInsideSlide(node, 0);
+      }
+      return false;
+    });
+  }
+  function resizeSlideToWidescreen(node) {
+    if (!canResize(node)) {
+      return false;
+    }
+    const width = node.width || 1920;
+    node.resize(width, Math.round(width / WIDESCREEN_RATIO));
+    return true;
+  }
+  function moveNodeInsideSlide(node, margin) {
+    if (!canMove(node) || !("absoluteBoundingBox" in node) || !node.absoluteBoundingBox) {
+      return false;
+    }
+    const slide = findSlideRoot(node);
+    if (!slide || !("absoluteBoundingBox" in slide) || !slide.absoluteBoundingBox) {
+      return false;
+    }
+    const delta = getDeltaToFitBounds(node.absoluteBoundingBox, slide.absoluteBoundingBox, margin);
+    if (delta.x === 0 && delta.y === 0) {
+      return false;
+    }
+    node.x += delta.x;
+    node.y += delta.y;
+    return true;
+  }
+  function findSlideRoot(node) {
+    let current = node;
+    let slide = null;
+    while (current && current.type !== "PAGE" && current.type !== "DOCUMENT") {
+      if (isFrameOrSlide(current)) {
+        slide = current;
+      }
+      current = current.parent;
+    }
+    return slide;
+  }
+  function isSceneNode(node) {
+    return "visible" in node;
+  }
+  function isFrameOrSlide(node) {
+    return node.type === "FRAME" || node.type === "SLIDE";
+  }
+  function canMove(node) {
+    return "x" in node && "y" in node;
+  }
+  function canResize(node) {
+    return "width" in node && "height" in node && "resize" in node;
+  }
+
   // src/plugin/rules/registry.ts
   var RULES = {
     "visual.gradient-fill": {
@@ -197,7 +307,8 @@
       severity: "warning",
       title: "\u0422\u0435\u043A\u0441\u0442 \u0431\u043B\u0438\u0437\u043A\u043E \u043A \u043A\u0440\u0430\u044E \u0441\u043B\u0430\u0439\u0434\u0430",
       why: "\u0422\u0435\u043A\u0441\u0442 \u0440\u044F\u0434\u043E\u043C \u0441 \u043A\u0440\u0430\u0435\u043C \u043C\u043E\u0436\u0435\u0442 \u043E\u0431\u0440\u0435\u0437\u0430\u0442\u044C\u0441\u044F \u043F\u043E\u0441\u043B\u0435 \u0437\u0430\u043C\u0435\u043D\u044B \u0448\u0440\u0438\u0444\u0442\u0430 \u0438\u043B\u0438 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u043E\u0439 \u0432\u0451\u0440\u0441\u0442\u043A\u0438 \u0432 PowerPoint.",
-      fixHint: "\u0421\u0434\u0432\u0438\u043D\u044C\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0432\u043D\u0443\u0442\u0440\u044C \u0441\u043B\u0430\u0439\u0434\u0430 \u0438\u043B\u0438 \u0443\u0432\u0435\u043B\u0438\u0447\u044C\u0442\u0435 \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u044B\u0439 \u043E\u0442\u0441\u0442\u0443\u043F."
+      fixHint: "\u0421\u0434\u0432\u0438\u043D\u044C\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0432\u043D\u0443\u0442\u0440\u044C \u0441\u043B\u0430\u0439\u0434\u0430 \u0438\u043B\u0438 \u0443\u0432\u0435\u043B\u0438\u0447\u044C\u0442\u0435 \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u044B\u0439 \u043E\u0442\u0441\u0442\u0443\u043F.",
+      autofix: { label: "\u0421\u0434\u0432\u0438\u043D\u0443\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0432\u043D\u0443\u0442\u0440\u044C \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0439 \u0437\u043E\u043D\u044B" }
     },
     "text.outside-slide-bounds": {
       id: "text.outside-slide-bounds",
@@ -205,7 +316,8 @@
       severity: "critical",
       title: "\u0422\u0435\u043A\u0441\u0442 \u0432\u044B\u0445\u043E\u0434\u0438\u0442 \u0437\u0430 \u0433\u0440\u0430\u043D\u0438\u0446\u044B \u0441\u043B\u0430\u0439\u0434\u0430",
       why: "\u0422\u0435\u043A\u0441\u0442 \u0437\u0430 \u043F\u0440\u0435\u0434\u0435\u043B\u0430\u043C\u0438 \u0441\u043B\u0430\u0439\u0434\u0430 \u043C\u043E\u0436\u0435\u0442 \u043E\u0431\u0440\u0435\u0437\u0430\u0442\u044C\u0441\u044F \u0438\u043B\u0438 \u043D\u0435\u043E\u0436\u0438\u0434\u0430\u043D\u043D\u043E \u043F\u043E\u044F\u0432\u0438\u0442\u044C\u0441\u044F \u043F\u043E\u0441\u043B\u0435 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430.",
-      fixHint: "\u041F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E \u043F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0432\u043D\u0443\u0442\u0440\u044C \u0433\u0440\u0430\u043D\u0438\u0446 \u0441\u043B\u0430\u0439\u0434\u0430."
+      fixHint: "\u041F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E \u043F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0432\u043D\u0443\u0442\u0440\u044C \u0433\u0440\u0430\u043D\u0438\u0446 \u0441\u043B\u0430\u0439\u0434\u0430.",
+      autofix: { label: "\u0412\u0435\u0440\u043D\u0443\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0432 \u0433\u0440\u0430\u043D\u0438\u0446\u044B \u0441\u043B\u0430\u0439\u0434\u0430" }
     },
     "text.non-system-font": {
       id: "text.non-system-font",
@@ -221,7 +333,8 @@
       severity: "critical",
       title: "\u0421\u043B\u0430\u0439\u0434 \u043D\u0435 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 16:9",
       why: "\u041D\u0435\u043E\u0436\u0438\u0434\u0430\u043D\u043D\u043E\u0435 \u0441\u043E\u043E\u0442\u043D\u043E\u0448\u0435\u043D\u0438\u0435 \u0441\u0442\u043E\u0440\u043E\u043D \u043C\u043E\u0436\u0435\u0442 \u043F\u0440\u0438\u0432\u0435\u0441\u0442\u0438 \u043A \u0440\u0430\u0437\u043D\u044B\u043C \u0440\u0430\u0437\u043C\u0435\u0440\u0430\u043C \u0441\u0442\u0440\u0430\u043D\u0438\u0446 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u043E\u043C\u0443 \u043C\u0430\u0441\u0448\u0442\u0430\u0431\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044E \u0432 PPTX.",
-      fixHint: "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u0435 \u0440\u0430\u0437\u043C\u0435\u0440 \u0441\u043B\u0430\u0439\u0434\u0430/\u0444\u0440\u0435\u0439\u043C\u0430 \u043D\u0430 16:9, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 1920x1080."
+      fixHint: "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u0435 \u0440\u0430\u0437\u043C\u0435\u0440 \u0441\u043B\u0430\u0439\u0434\u0430/\u0444\u0440\u0435\u0439\u043C\u0430 \u043D\u0430 16:9, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 1920x1080.",
+      autofix: { label: "\u041F\u0440\u0438\u0432\u0435\u0441\u0442\u0438 \u0441\u043B\u0430\u0439\u0434 \u043A 16:9" }
     },
     "structure.object-outside-slide-bounds": {
       id: "structure.object-outside-slide-bounds",
@@ -229,7 +342,8 @@
       severity: "warning",
       title: "\u041E\u0431\u044A\u0435\u043A\u0442 \u0432\u044B\u0445\u043E\u0434\u0438\u0442 \u0437\u0430 \u0433\u0440\u0430\u043D\u0438\u0446\u044B \u0441\u043B\u0430\u0439\u0434\u0430",
       why: "\u041E\u0431\u044A\u0435\u043A\u0442\u044B \u0437\u0430 \u043F\u0440\u0435\u0434\u0435\u043B\u0430\u043C\u0438 \u0441\u043B\u0430\u0439\u0434\u0430 \u043C\u043E\u0433\u0443\u0442 \u043E\u0431\u0440\u0435\u0437\u0430\u0442\u044C\u0441\u044F, \u043F\u043E\u043F\u0430\u0441\u0442\u044C \u0432 \u044D\u043A\u0441\u043F\u043E\u0440\u0442 \u043D\u0435\u043E\u0436\u0438\u0434\u0430\u043D\u043D\u043E \u0438\u043B\u0438 \u043F\u043E\u0432\u043B\u0438\u044F\u0442\u044C \u043D\u0430 layout \u0441\u043B\u0430\u0439\u0434\u0430.",
-      fixHint: "\u041F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u0432\u043D\u0443\u0442\u0440\u044C \u0441\u043B\u0430\u0439\u0434\u0430 \u0438\u043B\u0438 \u0443\u0434\u0430\u043B\u0438\u0442\u0435 \u0435\u0433\u043E \u043F\u0435\u0440\u0435\u0434 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u043E\u043C."
+      fixHint: "\u041F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u0432\u043D\u0443\u0442\u0440\u044C \u0441\u043B\u0430\u0439\u0434\u0430 \u0438\u043B\u0438 \u0443\u0434\u0430\u043B\u0438\u0442\u0435 \u0435\u0433\u043E \u043F\u0435\u0440\u0435\u0434 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u043E\u043C.",
+      autofix: { label: "\u0412\u0435\u0440\u043D\u0443\u0442\u044C \u043E\u0431\u044A\u0435\u043A\u0442 \u0432 \u0433\u0440\u0430\u043D\u0438\u0446\u044B \u0441\u043B\u0430\u0439\u0434\u0430" }
     },
     "structure.nested-frame": {
       id: "structure.nested-frame",
@@ -526,12 +640,31 @@
         });
       }
     }
+    if (message.type === "APPLY_FIXES_REQUEST") {
+      try {
+        const applyResult = yield applyFixes(message.targets);
+        const document = collectFigmaDocument(message.scope);
+        const findings = scanDocument(document, message.settings);
+        postToUi({
+          type: "APPLY_FIXES_RESULT",
+          result: __spreadProps(__spreadValues({}, applyResult), {
+            issues: findings.map((finding) => toIssueDto(finding, document)),
+            slideCount: document.slides.length
+          })
+        });
+      } catch (error) {
+        postToUi({
+          type: "APPLY_FIXES_ERROR",
+          message: error instanceof Error ? error.message : "Unknown autofix error"
+        });
+      }
+    }
   });
   function postToUi(message) {
     figma.ui.postMessage(message);
   }
   function toIssueDto(finding, document) {
-    var _a;
+    var _a, _b;
     const rule = RULES[finding.ruleId];
     const slide = document.slides.find((item) => item.id === finding.slideId);
     if (!rule) {
@@ -539,6 +672,7 @@
     }
     return {
       id: finding.id,
+      ruleId: finding.ruleId,
       group: rule.group,
       severity: (_a = finding.severityOverride) != null ? _a : rule.severity,
       title: rule.title,
@@ -546,6 +680,8 @@
       layer: finding.nodePath.join(" / "),
       why: rule.why,
       fix: rule.fixHint,
+      fixAvailable: Boolean(rule.autofix),
+      fixLabel: (_b = rule.autofix) == null ? void 0 : _b.label,
       nodeId: finding.nodeId
     };
   }
@@ -601,7 +737,7 @@
       viewportBounds.width / Math.max(bounds.width * padding, 1),
       viewportBounds.height / Math.max(bounds.height * padding, 1)
     );
-    return clamp(fitZoom, 0.35, 2);
+    return clamp2(fitZoom, 0.35, 2);
   }
   function easeOutCubic(value) {
     return 1 - Math.pow(1 - value, 3);
@@ -609,7 +745,7 @@
   function lerp(from, to, progress) {
     return from + (to - from) * progress;
   }
-  function clamp(value, min, max) {
+  function clamp2(value, min, max) {
     return Math.min(Math.max(value, min), max);
   }
 })();

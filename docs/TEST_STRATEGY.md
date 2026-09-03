@@ -18,6 +18,10 @@ Fast feedback:
 fixture -> scanDocument() -> expected findings
 ```
 
+Autofix geometry helpers are also unit-tested outside the Figma runtime. The
+plugin-side mutation code stays thin and delegates position math to pure helpers
+where possible.
+
 2. Adapter tests
 
 Validate that mocked Figma node-like objects normalize into our internal model correctly.

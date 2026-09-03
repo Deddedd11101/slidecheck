@@ -36,8 +36,8 @@
 
 ## Phase 5: Autofix
 
-- implement safe-copy workflow;
+- implement fix message transport;
 - add one fix algorithm at a time;
 - rescan after fixes;
-- never mutate originals without explicit copy/confirmation.
-
+- keep unsupported rules manual until their visual risk is understood;
+- implement safe-copy workflow after Design/Slides duplication behavior is verified.
