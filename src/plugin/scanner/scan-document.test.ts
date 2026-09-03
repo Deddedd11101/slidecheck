@@ -204,4 +204,93 @@ describe("scanDocument", () => {
       "structure.object-outside-slide-bounds",
     ]);
   });
+
+  it("downgrades minor object overflow in standard mode", () => {
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Decor",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+          children: [
+            {
+              id: "shape-1",
+              name: "Small overflow circle",
+              type: "ELLIPSE",
+              path: ["Decor", "Small overflow circle"],
+              bounds: { x: 1912, y: 200, width: 16, height: 16 },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(scanDocument(document)).toMatchObject([
+      {
+        ruleId: "structure.object-outside-slide-bounds",
+        severityOverride: "suggestion",
+        evidence: {
+          overflow: 8,
+          minorOverflowThreshold: 12,
+        },
+      },
+    ]);
+  });
+
+  it("ignores minor object overflow in soft mode", () => {
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Decor",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+          children: [
+            {
+              id: "shape-1",
+              name: "Small overflow circle",
+              type: "ELLIPSE",
+              path: ["Decor", "Small overflow circle"],
+              bounds: { x: 1912, y: 200, width: 16, height: 16 },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(scanDocument(document, { strictness: "soft" })).toEqual([]);
+  });
+
+  it("respects disabled rule groups", () => {
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Structure disabled",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width: 1280, height: 800 },
+          children: [
+            {
+              id: "shape-1",
+              name: "Outside decoration",
+              type: "ELLIPSE",
+              path: ["Structure disabled", "Outside decoration"],
+              bounds: { x: 1250, y: 200, width: 200, height: 200 },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(scanDocument(document, {
+      enabledGroups: {
+        visual: true,
+        text: true,
+        structure: false,
+        interactive: true,
+        export: true,
+      },
+    })).toEqual([]);
+  });
 });

@@ -18,6 +18,7 @@ export interface Finding {
   slideId?: string;
   nodeName: string;
   nodePath: string[];
+  severityOverride?: Severity;
   evidence?: Record<string, unknown>;
 }
 

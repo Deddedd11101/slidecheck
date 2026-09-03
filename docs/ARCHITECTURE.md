@@ -44,7 +44,7 @@ UI button
   -> plugin controller
   -> collect Figma nodes
   -> normalize to internal document model
-  -> run scanner rules
+  -> run scanner rules with scan settings
   -> SCAN_RESULT
   -> UI renders findings
 
@@ -75,3 +75,15 @@ Checker logic detects the problem and emits findings:
 
 This keeps UI copy stable while allowing scanner implementation to evolve.
 
+## Scan Settings
+
+The UI sends scan settings with each scan request:
+
+- `strictness`: `soft`, `standard`, or `strict`;
+- `enabledGroups`: toggles for visual/text/structure/interactive/export checks.
+
+Current strictness effects:
+
+- soft: smaller text safe margin and ignores minor decorative object overflow;
+- standard: default margin and downgrades minor object overflow to a suggestion;
+- strict: larger text safe margin and reports every object overflow as a warning.

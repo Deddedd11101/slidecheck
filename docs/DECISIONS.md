@@ -49,3 +49,9 @@ Reason: designers fix presentations slide by slide. Category-first grouping made
 Decision: the UI can hide individual findings in the current scan result, but ignores are not persisted to the Figma file yet.
 
 Reason: early rule tuning needs a quick way to reduce noise without permanently suppressing problems or writing plugin metadata into user files.
+
+## 2026-09-03: Add Scan Strictness Before More Rules
+
+Decision: add scanner settings and a strictness selector before expanding the rule catalog further.
+
+Reason: the linter already detects real issues. More value now comes from controlling noise and false positives than from adding unchecked rules.

@@ -47,6 +47,7 @@ Use a small controlled Figma/Figma Slides file:
 - nested frame;
 - prototype interaction;
 - video fill, if accessible through plugin node data.
+- scan strictness and enabled rule groups.
 
 ## Commands
 

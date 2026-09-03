@@ -1,6 +1,14 @@
 import type { IssueGroup, Severity } from "./types";
 
 export type ScanScope = "page" | "selected";
+export type ScanStrictness = "soft" | "standard" | "strict";
+
+export type EnabledRuleGroups = Record<IssueGroup, boolean>;
+
+export interface ScanSettings {
+  strictness: ScanStrictness;
+  enabledGroups: EnabledRuleGroups;
+}
 
 export interface IssueDto {
   id: string;
@@ -15,7 +23,7 @@ export interface IssueDto {
 }
 
 export type UiToPluginMessage =
-  | { type: "SCAN_REQUEST"; scope: ScanScope }
+  | { type: "SCAN_REQUEST"; scope: ScanScope; settings: ScanSettings }
   | { type: "SELECT_NODE_REQUEST"; nodeId: string };
 
 export type PluginToUiMessage =

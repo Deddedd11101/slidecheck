@@ -1,5 +1,21 @@
 "use strict";
 (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    if (__getOwnPropSymbols)
+      for (var prop of __getOwnPropSymbols(b)) {
+        if (__propIsEnum.call(b, prop))
+          __defNormalProp(a, prop, b[prop]);
+      }
+    return a;
+  };
   var __async = (__this, __arguments, generator) => {
     return new Promise((resolve, reject) => {
       var fulfilled = (value) => {
@@ -225,12 +241,15 @@
     }
   };
 
-  // src/plugin/scanner/scan-document.ts
-  var DEFAULT_SAFE_MARGIN = 16;
-  var OUTSIDE_BOUNDS_TOLERANCE = 1;
-  var ASPECT_RATIO_TOLERANCE = 0.01;
-  var TARGET_WIDESCREEN_RATIO = 16 / 9;
-  var SAFE_SYSTEM_FONTS = /* @__PURE__ */ new Set([
+  // src/plugin/scanner/config.ts
+  var DEFAULT_ENABLED_GROUPS = {
+    visual: true,
+    text: true,
+    structure: true,
+    interactive: true,
+    export: true
+  };
+  var DEFAULT_SAFE_SYSTEM_FONTS = [
     "Arial",
     "Aptos",
     "Calibri",
@@ -241,17 +260,53 @@
     "Times New Roman",
     "Trebuchet MS",
     "Verdana"
-  ]);
-  function scanDocument(document) {
+  ];
+  var DEFAULT_SCAN_SETTINGS = {
+    strictness: "standard",
+    enabledGroups: DEFAULT_ENABLED_GROUPS
+  };
+  function createScannerConfig(settings = {}) {
+    var _a, _b;
+    const strictness = (_a = settings.strictness) != null ? _a : DEFAULT_SCAN_SETTINGS.strictness;
+    return {
+      strictness,
+      safeMargin: getSafeMargin(strictness),
+      outsideBoundsTolerance: strictness === "strict" ? 0 : 1,
+      minorObjectOverflow: getMinorObjectOverflow(strictness),
+      allowedFontFamilies: new Set(DEFAULT_SAFE_SYSTEM_FONTS),
+      enabledGroups: __spreadValues(__spreadValues({}, DEFAULT_ENABLED_GROUPS), (_b = settings.enabledGroups) != null ? _b : {})
+    };
+  }
+  function isRuleGroupEnabled(ruleId, config) {
+    const group = ruleId.split(".")[0];
+    return config.enabledGroups[group] !== false;
+  }
+  function getSafeMargin(strictness) {
+    if (strictness === "soft") return 8;
+    if (strictness === "strict") return 24;
+    return 16;
+  }
+  function getMinorObjectOverflow(strictness) {
+    if (strictness === "soft") return 32;
+    if (strictness === "strict") return 0;
+    return 12;
+  }
+
+  // src/plugin/scanner/scan-document.ts
+  var ASPECT_RATIO_TOLERANCE = 0.01;
+  var TARGET_WIDESCREEN_RATIO = 16 / 9;
+  function scanDocument(document, settings) {
+    const config = createScannerConfig(settings);
     const findings = [];
     for (const slide of document.slides) {
-      findings.push(...scanSlide(slide));
-      visitNodeTree(slide.children, slide, findings);
+      findings.push(...scanSlide(slide, config));
+      visitNodeTree(slide.children, slide, config, findings);
     }
     return findings;
   }
-  function scanSlide(slide) {
-    if (isWidescreen(slide.bounds)) {
+  function scanSlide(slide, config) {
+    const ruleId = "structure.non-16-9-slide";
+    if (!isRuleGroupEnabled(ruleId, config) || isWidescreen(slide.bounds)) {
       return [];
     }
     return [
@@ -262,132 +317,154 @@
       })
     ];
   }
-  function visitNodeTree(nodes, slide, findings) {
+  function visitNodeTree(nodes, slide, config, findings) {
     var _a;
     for (const node of nodes) {
       if (node.visible === false) {
         continue;
       }
-      findings.push(...scanNode(node, slide));
+      findings.push(...scanNode(node, slide, config));
       if ((_a = node.children) == null ? void 0 : _a.length) {
-        visitNodeTree(node.children, slide, findings);
+        visitNodeTree(node.children, slide, config, findings);
       }
     }
   }
-  function scanNode(node, slide) {
+  function scanNode(node, slide, config) {
     return [
-      ...checkGradientFill(node, slide),
-      ...checkMask(node, slide),
-      ...checkBlurEffects(node, slide),
-      ...checkMultipleShadows(node, slide),
-      ...checkBlendMode(node, slide),
-      ...checkTextOutsideSlideBounds(node, slide),
-      ...checkTextNearSlideEdge(node, slide),
-      ...checkNonSystemFont(node, slide),
-      ...checkObjectOutsideSlideBounds(node, slide),
-      ...checkNestedFrame(node, slide)
+      ...checkGradientFill(node, slide, config),
+      ...checkMask(node, slide, config),
+      ...checkBlurEffects(node, slide, config),
+      ...checkMultipleShadows(node, slide, config),
+      ...checkBlendMode(node, slide, config),
+      ...checkTextOutsideSlideBounds(node, slide, config),
+      ...checkTextNearSlideEdge(node, slide, config),
+      ...checkNonSystemFont(node, slide, config),
+      ...checkObjectOutsideSlideBounds(node, slide, config),
+      ...checkNestedFrame(node, slide, config)
     ];
   }
-  function checkGradientFill(node, slide) {
+  function checkGradientFill(node, slide, config) {
     var _a, _b;
+    const ruleId = "visual.gradient-fill";
+    if (!isRuleGroupEnabled(ruleId, config)) return [];
     const visibleFills = (_b = (_a = node.fills) == null ? void 0 : _a.filter((fill) => fill.visible !== false)) != null ? _b : [];
     const gradientFills = visibleFills.filter((fill) => fill.type.startsWith("GRADIENT_"));
     if (gradientFills.length === 0) {
       return [];
     }
     return [
-      createFinding("visual.gradient-fill", slide, node, {
+      createFinding(ruleId, slide, node, {
         fillTypes: gradientFills.map((fill) => fill.type)
       })
     ];
   }
-  function checkMask(node, slide) {
-    if (node.isMask !== true) {
+  function checkMask(node, slide, config) {
+    const ruleId = "visual.mask";
+    if (!isRuleGroupEnabled(ruleId, config) || node.isMask !== true) {
       return [];
     }
-    return [createFinding("visual.mask", slide, node)];
+    return [createFinding(ruleId, slide, node)];
   }
-  function checkBlurEffects(node, slide) {
+  function checkBlurEffects(node, slide, config) {
     var _a, _b;
     const visibleEffects = (_b = (_a = node.effects) == null ? void 0 : _a.filter((effect) => effect.visible !== false)) != null ? _b : [];
     const findings = [];
-    if (visibleEffects.some((effect) => effect.type === "BACKGROUND_BLUR")) {
-      findings.push(createFinding("visual.background-blur", slide, node));
+    const backgroundBlurRuleId = "visual.background-blur";
+    if (isRuleGroupEnabled(backgroundBlurRuleId, config) && visibleEffects.some((effect) => effect.type === "BACKGROUND_BLUR")) {
+      findings.push(createFinding(backgroundBlurRuleId, slide, node));
     }
-    if (visibleEffects.some((effect) => effect.type === "LAYER_BLUR")) {
-      findings.push(createFinding("visual.layer-blur", slide, node));
+    const layerBlurRuleId = "visual.layer-blur";
+    if (isRuleGroupEnabled(layerBlurRuleId, config) && visibleEffects.some((effect) => effect.type === "LAYER_BLUR")) {
+      findings.push(createFinding(layerBlurRuleId, slide, node));
     }
     return findings;
   }
-  function checkMultipleShadows(node, slide) {
+  function checkMultipleShadows(node, slide, config) {
     var _a, _b;
+    const ruleId = "visual.multiple-shadows";
+    if (!isRuleGroupEnabled(ruleId, config)) return [];
     const visibleEffects = (_b = (_a = node.effects) == null ? void 0 : _a.filter((effect) => effect.visible !== false)) != null ? _b : [];
     const shadowCount = visibleEffects.filter((effect) => effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW").length;
     if (shadowCount <= 1) {
       return [];
     }
     return [
-      createFinding("visual.multiple-shadows", slide, node, {
+      createFinding(ruleId, slide, node, {
         shadowCount
       })
     ];
   }
-  function checkBlendMode(node, slide) {
-    if (!node.blendMode || node.blendMode === "NORMAL" || node.blendMode === "PASS_THROUGH") {
+  function checkBlendMode(node, slide, config) {
+    const ruleId = "visual.blend-mode";
+    if (!isRuleGroupEnabled(ruleId, config) || !node.blendMode || node.blendMode === "NORMAL" || node.blendMode === "PASS_THROUGH") {
       return [];
     }
     return [
-      createFinding("visual.blend-mode", slide, node, {
+      createFinding(ruleId, slide, node, {
         blendMode: node.blendMode
       })
     ];
   }
-  function checkTextOutsideSlideBounds(node, slide) {
-    if (node.type !== "TEXT" || !node.bounds || isInsideBounds(node.bounds, slide.bounds, OUTSIDE_BOUNDS_TOLERANCE)) {
+  function checkTextOutsideSlideBounds(node, slide, config) {
+    const ruleId = "text.outside-slide-bounds";
+    if (!isRuleGroupEnabled(ruleId, config) || node.type !== "TEXT" || !node.bounds || isInsideBounds(node.bounds, slide.bounds, config.outsideBoundsTolerance)) {
       return [];
     }
-    return [createFinding("text.outside-slide-bounds", slide, node)];
+    return [createFinding(ruleId, slide, node)];
   }
-  function checkTextNearSlideEdge(node, slide) {
-    if (node.type !== "TEXT" || !node.bounds || !isInsideBounds(node.bounds, slide.bounds, OUTSIDE_BOUNDS_TOLERANCE)) {
+  function checkTextNearSlideEdge(node, slide, config) {
+    const ruleId = "text.near-slide-edge";
+    if (!isRuleGroupEnabled(ruleId, config) || node.type !== "TEXT" || !node.bounds || !isInsideBounds(node.bounds, slide.bounds, config.outsideBoundsTolerance)) {
       return [];
     }
     const distance = getMinDistanceToContainerEdge(node.bounds, slide.bounds);
-    if (distance >= DEFAULT_SAFE_MARGIN) {
+    if (distance >= config.safeMargin) {
       return [];
     }
     return [
-      createFinding("text.near-slide-edge", slide, node, {
-        safeMargin: DEFAULT_SAFE_MARGIN,
+      createFinding(ruleId, slide, node, {
+        safeMargin: config.safeMargin,
         distance
       })
     ];
   }
-  function checkNonSystemFont(node, slide) {
+  function checkNonSystemFont(node, slide, config) {
     var _a;
-    if (node.type !== "TEXT" || !((_a = node.textStyle) == null ? void 0 : _a.fontFamily) || SAFE_SYSTEM_FONTS.has(node.textStyle.fontFamily)) {
+    const ruleId = "text.non-system-font";
+    if (!isRuleGroupEnabled(ruleId, config) || node.type !== "TEXT" || !((_a = node.textStyle) == null ? void 0 : _a.fontFamily) || config.allowedFontFamilies.has(node.textStyle.fontFamily)) {
       return [];
     }
     return [
-      createFinding("text.non-system-font", slide, node, {
+      createFinding(ruleId, slide, node, {
         fontFamily: node.textStyle.fontFamily,
         fontPostScriptName: node.textStyle.fontPostScriptName
       })
     ];
   }
-  function checkObjectOutsideSlideBounds(node, slide) {
-    if (node.type === "TEXT" || !node.bounds || isInsideBounds(node.bounds, slide.bounds, OUTSIDE_BOUNDS_TOLERANCE)) {
+  function checkObjectOutsideSlideBounds(node, slide, config) {
+    const ruleId = "structure.object-outside-slide-bounds";
+    if (!isRuleGroupEnabled(ruleId, config) || node.type === "TEXT" || !node.bounds || isInsideBounds(node.bounds, slide.bounds, config.outsideBoundsTolerance)) {
       return [];
     }
-    return [createFinding("structure.object-outside-slide-bounds", slide, node)];
-  }
-  function checkNestedFrame(node, slide) {
-    if (node.type !== "FRAME") {
+    const overflow = getMaxOverflowBeyondContainer(node.bounds, slide.bounds);
+    if (overflow <= config.minorObjectOverflow && config.strictness === "soft") {
       return [];
     }
-    return [createFinding("structure.nested-frame", slide, node)];
+    return [
+      createFinding(ruleId, slide, node, {
+        overflow,
+        minorOverflowThreshold: config.minorObjectOverflow
+      }, overflow <= config.minorObjectOverflow ? "suggestion" : void 0)
+    ];
   }
-  function createFinding(ruleId, slide, node, evidence) {
+  function checkNestedFrame(node, slide, config) {
+    const ruleId = "structure.nested-frame";
+    if (!isRuleGroupEnabled(ruleId, config) || node.type !== "FRAME") {
+      return [];
+    }
+    return [createFinding(ruleId, slide, node)];
+  }
+  function createFinding(ruleId, slide, node, evidence, severityOverride) {
     return {
       id: `${node.id}:${ruleId}`,
       ruleId,
@@ -395,6 +472,7 @@
       slideId: slide.id,
       nodeName: node.name,
       nodePath: node.path,
+      severityOverride,
       evidence
     };
   }
@@ -411,6 +489,13 @@
     const bottom = container.y + container.height - (node.y + node.height);
     return Math.min(left, top, right, bottom);
   }
+  function getMaxOverflowBeyondContainer(node, container) {
+    const left = Math.max(container.x - node.x, 0);
+    const top = Math.max(container.y - node.y, 0);
+    const right = Math.max(node.x + node.width - (container.x + container.width), 0);
+    const bottom = Math.max(node.y + node.height - (container.y + container.height), 0);
+    return Math.max(left, top, right, bottom);
+  }
 
   // src/plugin/code.ts
   figma.showUI(__html__, { width: 400, height: 620, title: "SlideCheck" });
@@ -418,7 +503,7 @@
     if (message.type === "SCAN_REQUEST") {
       try {
         const document = collectFigmaDocument(message.scope);
-        const findings = scanDocument(document);
+        const findings = scanDocument(document, message.settings);
         postToUi({
           type: "SCAN_RESULT",
           issues: findings.map((finding) => toIssueDto(finding, document)),
@@ -446,6 +531,7 @@
     figma.ui.postMessage(message);
   }
   function toIssueDto(finding, document) {
+    var _a;
     const rule = RULES[finding.ruleId];
     const slide = document.slides.find((item) => item.id === finding.slideId);
     if (!rule) {
@@ -454,7 +540,7 @@
     return {
       id: finding.id,
       group: rule.group,
-      severity: rule.severity,
+      severity: (_a = finding.severityOverride) != null ? _a : rule.severity,
       title: rule.title,
       slide: slide ? slide.name : "Unknown slide",
       layer: finding.nodePath.join(" / "),

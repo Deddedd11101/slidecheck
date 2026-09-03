@@ -10,7 +10,7 @@ figma.ui.onmessage = async (message: UiToPluginMessage) => {
   if (message.type === "SCAN_REQUEST") {
     try {
       const document = collectFigmaDocument(message.scope);
-      const findings = scanDocument(document);
+      const findings = scanDocument(document, message.settings);
 
       postToUi({
         type: "SCAN_RESULT",
@@ -52,7 +52,7 @@ function toIssueDto(finding: Finding, document: NormalizedDocument): IssueDto {
   return {
     id: finding.id,
     group: rule.group,
-    severity: rule.severity,
+    severity: finding.severityOverride ?? rule.severity,
     title: rule.title,
     slide: slide ? slide.name : "Unknown slide",
     layer: finding.nodePath.join(" / "),
