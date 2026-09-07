@@ -4,11 +4,11 @@ import {
   AlertTriangle, CheckCircle, Info,
   Layers, Type, LayoutGrid, Zap,
   RotateCcw, ZoomIn, Wand2,
-  FileText, ExternalLink,
+  FileText,
   Loader2, Circle, XCircle,
 } from "lucide-react";
 import type { IssueGroup } from "../shared/types";
-import type { EnabledRuleGroups, FixRunResultDto, FixTargetDto, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, UiToPluginMessage } from "../shared/messages";
+import type { EnabledRuleGroups, FixMode, FixRunResultDto, FixTargetDto, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, UiToPluginMessage } from "../shared/messages";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -576,9 +576,10 @@ function DetailStep({ issue, onBack, onSelect, onFix }: {
 
 function FixModeStep({ issues, onNext }: {
   issues: Array<Issue & { ruleId: string; nodeId: string }>;
-  onNext: (targets: FixTargetDto[]) => void;
+  onNext: (targets: FixTargetDto[], mode: FixMode) => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(issues.map(issue => issue.id)));
+  const [mode, setMode] = useState<FixMode>("copy");
   const selectedIssues = issues.filter(issue => selectedIds.has(issue.id));
 
   function toggleIssue(issueId: string) {
@@ -604,6 +605,26 @@ function FixModeStep({ issues, onNext }: {
           Маски, blur, blend modes и шрифты пока останутся ручными, чтобы не портить визуальную точность.
         </p>
       </div>
+      <div className="space-y-1.5">
+        <p className="text-[10px] text-white/30 font-mono uppercase tracking-widest">Куда применить</p>
+        {[
+          { id: "copy" as const, title: "Создать исправленную копию", note: "Исходные фреймы останутся без изменений" },
+          { id: "in-place" as const, title: "Исправить исходные фреймы", note: "Изменения можно отменить через Undo в Figma" },
+        ].map(option => (
+          <button key={option.id} onClick={() => setMode(option.id)}
+            className={`w-full flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+              mode === option.id ? "border-lime-400/45 bg-lime-400/[0.07]" : "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]"
+            }`}>
+            <span className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${mode === option.id ? "border-lime-400" : "border-white/20"}`}>
+              {mode === option.id && <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />}
+            </span>
+            <span className="min-w-0">
+              <span className={`block text-[11px] leading-tight ${mode === option.id ? "text-white/80" : "text-white/55"}`}>{option.title}</span>
+              <span className="block text-[10px] text-white/25 mt-0.5">{option.note}</span>
+            </span>
+          </button>
+        ))}
+      </div>
       <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: 290 }}>
         {issues.map(issue => (
           <label key={issue.id}
@@ -621,7 +642,7 @@ function FixModeStep({ issues, onNext }: {
           </label>
         ))}
       </div>
-      <PrimaryBtn onClick={() => onNext(selectedIssues.map(toFixTarget))} disabled={selectedIssues.length === 0}>
+      <PrimaryBtn onClick={() => onNext(selectedIssues.map(toFixTarget), mode)} disabled={selectedIssues.length === 0}>
         <span className="flex items-center justify-center gap-2"><Wand2 className="w-3.5 h-3.5" />Применить автофиксы</span>
       </PrimaryBtn>
     </div>
@@ -639,10 +660,11 @@ const APPLY_STEPS = [
   "Готово",
 ];
 
-function ApplyingStep({ scope, settings, targets, onDone, onError }: {
+function ApplyingStep({ scope, settings, targets, mode, onDone, onError }: {
   scope: ScanScope;
   settings: ScanSettings;
   targets: FixTargetDto[];
+  mode: FixMode;
   onDone: (result: FixRunResultDto) => void;
   onError: (message: string) => void;
 }) {
@@ -674,7 +696,7 @@ function ApplyingStep({ scope, settings, targets, onDone, onError }: {
         setTimeout(() => {
           if (!calledRef.current) {
             calledRef.current = true;
-            onDone({ applied: targets.length, skipped: 0, issues: MOCK_ISSUES.filter(issue => !isFixableIssue(issue)), slideCount: 12 });
+            onDone({ applied: targets.length, skipped: 0, copyNames: mode === "copy" ? ["Моковая исправленная копия"] : [], issues: MOCK_ISSUES.filter(issue => !isFixableIssue(issue)), slideCount: 12 });
           }
         }, 400);
       }
@@ -682,14 +704,14 @@ function ApplyingStep({ scope, settings, targets, onDone, onError }: {
 
     window.addEventListener("message", handleMessage);
     if (!isStandaloneBrowser()) {
-      postToPlugin({ type: "APPLY_FIXES_REQUEST", scope, settings, targets });
+      postToPlugin({ type: "APPLY_FIXES_REQUEST", scope, settings, targets, mode });
     }
 
     return () => {
       clearInterval(tick);
       window.removeEventListener("message", handleMessage);
     };
-  }, [onDone, onError, scope, settings, targets]);
+  }, [onDone, onError, scope, settings, targets, mode]);
 
   return (
     <div className="flex flex-col gap-5 px-4 py-5">
@@ -798,7 +820,7 @@ function FinalStep({ onRestart, scoreBefore, scoreAfter, fixedCount, skippedCoun
       {/* Remaining */}
       <div className="px-4 py-3 border-b border-white/[0.05]">
         <p className="text-[9.5px] text-white/25 font-mono uppercase tracking-widest mb-2">Осталось вручную</p>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: 170 }}>
           {remaining.map((item, i) => (
             <div key={i} className="flex items-start gap-2.5">
               <Info className="w-3 h-3 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -809,16 +831,13 @@ function FinalStep({ onRestart, scoreBefore, scoreAfter, fixedCount, skippedCoun
       </div>
 
       {/* Actions */}
-      <div className="px-4 py-3 space-y-2">
+      <div className="sticky bottom-0 px-4 py-3 space-y-2 bg-[#111111] border-t border-white/[0.05]">
         {copyPageName && (
           <div className="flex items-center gap-2 px-3 py-2 bg-emerald-400/[0.07] border border-emerald-400/20 rounded-lg">
             <CheckCircle className="w-3 h-3 text-emerald-400 flex-shrink-0" />
             <span className="text-[10.5px] text-emerald-400/70 truncate">Копия: {copyPageName}</span>
           </div>
         )}
-        <button className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/[0.08] hover:border-white/15 hover:bg-white/[0.04] text-white/35 hover:text-white/60 text-[11px] font-medium transition-all">
-          <ExternalLink className="w-3 h-3" />Открыть исправленную копию
-        </button>
         <GhostBtn onClick={onRestart}>
           <span className="flex items-center justify-center gap-1.5">
             <RotateCcw className="w-3 h-3" />Новая проверка
@@ -839,6 +858,7 @@ export default function App() {
   const [scoreBeforeFix, setScoreBeforeFix] = useState(0);
   const [scoreAfterFix, setScoreAfterFix] = useState(0);
   const [copyPageName, setCopyPageName] = useState("");
+  const [fixMode, setFixMode] = useState<FixMode>("copy");
   const [issues, setIssues] = useState<Issue[]>(MOCK_ISSUES);
   const [pendingFixIssues, setPendingFixIssues] = useState<Array<Issue & { ruleId: string; nodeId: string }>>([]);
   const [pendingFixTargets, setPendingFixTargets] = useState<FixTargetDto[]>([]);
@@ -897,7 +917,7 @@ export default function App() {
     setFixedCount(result.applied);
     setSkippedFixCount(result.skipped);
     setScoreAfterFix(computeScore(result.issues));
-    setCopyPageName("");
+    setCopyPageName(result.copyNames?.join(", ") ?? "");
     setDetail(null);
     setStep("final");
   }
@@ -971,10 +991,10 @@ export default function App() {
             onFix={(issue) => { if (isFixableIssue(issue)) startFixes([issue]); }} />
         )}
         {step === "fixmode" && (
-          <FixModeStep issues={pendingFixIssues} onNext={(targets) => { setPendingFixTargets(targets); setStep("applying"); }} />
+          <FixModeStep issues={pendingFixIssues} onNext={(targets, mode) => { setPendingFixTargets(targets); setFixMode(mode); setStep("applying"); }} />
         )}
         {step === "applying" && (
-          <ApplyingStep scope={scanScope} settings={scanSettings} targets={pendingFixTargets} onDone={finishFixes}
+          <ApplyingStep scope={scanScope} settings={scanSettings} targets={pendingFixTargets} mode={fixMode} onDone={finishFixes}
             onError={(message) => { setNotice(message); setStep("issues"); }} />
         )}
         {step === "final" && (

@@ -164,12 +164,15 @@
   // src/plugin/fixes/apply-fixes.ts
   var TEXT_SAFE_MARGIN = 16;
   var WIDESCREEN_RATIO = 16 / 9;
-  function applyFixes(targets) {
+  function applyFixes(targets, mode) {
     return __async(this, null, function* () {
       let applied = 0;
       let skipped = 0;
+      const copyNames = [];
+      const copyNodeIds = [];
       const seen = /* @__PURE__ */ new Set();
-      for (const target of targets) {
+      const effectiveTargets = mode === "copy" ? cloneTargetRoots(targets, copyNames, copyNodeIds) : targets;
+      for (const target of effectiveTargets) {
         const dedupeKey = `${target.nodeId}:${target.ruleId}`;
         if (seen.has(dedupeKey)) {
           continue;
@@ -182,8 +185,70 @@
           skipped += 1;
         }
       }
-      return { applied, skipped };
+      return { applied, skipped, copyNames, copyNodeIds };
     });
+  }
+  function cloneTargetRoots(targets, copyNames, copyNodeIds) {
+    var _a, _b;
+    const rootMap = /* @__PURE__ */ new Map();
+    const clonedTargets = [];
+    for (const target of targets) {
+      const original = figma.getNodeById(target.nodeId);
+      if (!original || !isSceneNode(original)) {
+        clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: "" }));
+        continue;
+      }
+      const root = (_a = findSlideRoot(original)) != null ? _a : original;
+      let clone = rootMap.get(root.id);
+      if (!clone) {
+        clone = cloneSceneNode(root);
+        if (!clone) {
+          clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: "" }));
+          continue;
+        }
+        rootMap.set(root.id, clone);
+        clone.name = `${root.name} \u2014 \u0438\u0441\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u043A\u043E\u043F\u0438\u044F`;
+        copyNames.push(clone.name);
+        copyNodeIds.push(clone.id);
+      }
+      const path = getChildIndexPath(root, original);
+      const clonedNode = path ? getNodeByChildIndexPath(clone, path) : null;
+      clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: (_b = clonedNode == null ? void 0 : clonedNode.id) != null ? _b : "" }));
+    }
+    return clonedTargets;
+  }
+  function cloneSceneNode(node) {
+    if (!("clone" in node) || typeof node.clone !== "function") {
+      return null;
+    }
+    return node.clone();
+  }
+  function getChildIndexPath(root, target) {
+    const path = [];
+    let current = target;
+    while (current && current.id !== root.id) {
+      const parent = current.parent;
+      if (!parent || !("children" in parent)) {
+        return null;
+      }
+      const index = parent.children.findIndex((child) => child.id === (current == null ? void 0 : current.id));
+      if (index < 0) {
+        return null;
+      }
+      path.unshift(index);
+      current = parent;
+    }
+    return (current == null ? void 0 : current.id) === root.id ? path : null;
+  }
+  function getNodeByChildIndexPath(root, path) {
+    let current = root;
+    for (const index of path) {
+      if (!("children" in current) || !current.children[index]) {
+        return null;
+      }
+      current = current.children[index];
+    }
+    return current;
   }
   function applyFix(target) {
     return __async(this, null, function* () {
@@ -642,8 +707,9 @@
     }
     if (message.type === "APPLY_FIXES_REQUEST") {
       try {
-        const applyResult = yield applyFixes(message.targets);
-        const document = collectFigmaDocument(message.scope);
+        const applyResult = yield applyFixes(message.targets, message.mode);
+        const scanScope = message.mode === "copy" && applyResult.copyNodeIds.length > 0 ? selectCopiedRoots(applyResult.copyNodeIds) : message.scope;
+        const document = collectFigmaDocument(scanScope);
         const findings = scanDocument(document, message.settings);
         postToUi({
           type: "APPLY_FIXES_RESULT",
@@ -662,6 +728,13 @@
   });
   function postToUi(message) {
     figma.ui.postMessage(message);
+  }
+  function selectCopiedRoots(nodeIds) {
+    const nodes = nodeIds.map((nodeId) => figma.getNodeById(nodeId)).filter((node) => Boolean(node) && isSelectableSceneNode(node));
+    if (nodes.length > 0) {
+      figma.currentPage.selection = nodes;
+    }
+    return "selected";
   }
   function toIssueDto(finding, document) {
     var _a, _b;
@@ -713,12 +786,12 @@
     const targetZoom = getTargetZoom(bounds);
     const startCenter = figma.viewport.center;
     const startZoom = figma.viewport.zoom;
-    const durationMs = 400;
+    const durationMs = 500;
     const startedAt = Date.now();
     const step = () => {
       const elapsed = Date.now() - startedAt;
       const progress = Math.min(elapsed / durationMs, 1);
-      const eased = easeOutCubic(progress);
+      const eased = easeInOutCubic(progress);
       figma.viewport.center = {
         x: lerp(startCenter.x, targetCenter.x, eased),
         y: lerp(startCenter.y, targetCenter.y, eased)
@@ -737,10 +810,10 @@
       viewportBounds.width / Math.max(bounds.width * padding, 1),
       viewportBounds.height / Math.max(bounds.height * padding, 1)
     );
-    return clamp2(fitZoom * 0.82, 0.35, 2);
+    return clamp2(fitZoom * 0.66, 0.35, 2);
   }
-  function easeOutCubic(value) {
-    return 1 - Math.pow(1 - value, 3);
+  function easeInOutCubic(value) {
+    return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
   }
   function lerp(from, to, progress) {
     return from + (to - from) * progress;

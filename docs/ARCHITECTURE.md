@@ -99,6 +99,8 @@ Current supported autofixes:
 Current limitations:
 
 - fixes mutate the current Figma document and rely on Figma Undo for rollback;
+- the user can choose to apply fixes in place or clone the affected root
+  frames/slides first; copy mode rescans the created copies;
 - mask, blur, blend-mode, gradient, nested-frame, and font fixes remain manual;
 - safe-copy workflow is a separate phase because Slides copy behavior needs
   manual API verification.

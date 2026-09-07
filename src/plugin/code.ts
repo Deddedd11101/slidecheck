@@ -39,8 +39,11 @@ figma.ui.onmessage = async (message: UiToPluginMessage) => {
 
   if (message.type === "APPLY_FIXES_REQUEST") {
     try {
-      const applyResult = await applyFixes(message.targets);
-      const document = collectFigmaDocument(message.scope);
+      const applyResult = await applyFixes(message.targets, message.mode);
+      const scanScope = message.mode === "copy" && applyResult.copyNodeIds.length > 0
+        ? selectCopiedRoots(applyResult.copyNodeIds)
+        : message.scope;
+      const document = collectFigmaDocument(scanScope);
       const findings = scanDocument(document, message.settings);
 
       postToUi({
@@ -62,6 +65,18 @@ figma.ui.onmessage = async (message: UiToPluginMessage) => {
 
 function postToUi(message: PluginToUiMessage): void {
   figma.ui.postMessage(message);
+}
+
+function selectCopiedRoots(nodeIds: string[]): "selected" {
+  const nodes = nodeIds
+    .map(nodeId => figma.getNodeById(nodeId))
+    .filter((node): node is SceneNode => Boolean(node) && isSelectableSceneNode(node));
+
+  if (nodes.length > 0) {
+    figma.currentPage.selection = nodes;
+  }
+
+  return "selected";
 }
 
 function toIssueDto(finding: Finding, document: NormalizedDocument): IssueDto {
@@ -119,13 +134,13 @@ function focusNodeSmooth(node: SceneNode): void {
   const targetZoom = getTargetZoom(bounds);
   const startCenter = figma.viewport.center;
   const startZoom = figma.viewport.zoom;
-  const durationMs = 400;
+  const durationMs = 500;
   const startedAt = Date.now();
 
   const step = () => {
     const elapsed = Date.now() - startedAt;
     const progress = Math.min(elapsed / durationMs, 1);
-    const eased = easeOutCubic(progress);
+    const eased = easeInOutCubic(progress);
 
     figma.viewport.center = {
       x: lerp(startCenter.x, targetCenter.x, eased),
@@ -149,11 +164,13 @@ function getTargetZoom(bounds: { width: number; height: number }): number {
     viewportBounds.height / Math.max(bounds.height * padding, 1),
   );
 
-  return clamp(fitZoom * 0.82, 0.35, 2);
+  return clamp(fitZoom * 0.66, 0.35, 2);
 }
 
-function easeOutCubic(value: number): number {
-  return 1 - Math.pow(1 - value, 3);
+function easeInOutCubic(value: number): number {
+  return value < 0.5
+    ? 4 * value * value * value
+    : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
 
 function lerp(from: number, to: number, progress: number): number {

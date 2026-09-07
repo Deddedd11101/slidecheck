@@ -1,6 +1,7 @@
 import type { IssueGroup, Severity } from "./types";
 
 export type ScanScope = "page" | "selected";
+export type FixMode = "in-place" | "copy";
 export type ScanStrictness = "soft" | "standard" | "strict";
 
 export type EnabledRuleGroups = Record<IssueGroup, boolean>;
@@ -36,12 +37,13 @@ export interface FixRunResultDto {
   skipped: number;
   issues: IssueDto[];
   slideCount: number;
+  copyNames?: string[];
 }
 
 export type UiToPluginMessage =
   | { type: "SCAN_REQUEST"; scope: ScanScope; settings: ScanSettings }
   | { type: "SELECT_NODE_REQUEST"; nodeId: string }
-  | { type: "APPLY_FIXES_REQUEST"; scope: ScanScope; settings: ScanSettings; targets: FixTargetDto[] };
+  | { type: "APPLY_FIXES_REQUEST"; scope: ScanScope; settings: ScanSettings; targets: FixTargetDto[]; mode: FixMode };
 
 export type PluginToUiMessage =
   | { type: "SCAN_RESULT"; issues: IssueDto[]; slideCount: number }

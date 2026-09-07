@@ -46,6 +46,9 @@ Create a page with at least three top-level frames:
 - If supported findings exist, the issues screen shows an enabled autofix button.
 - Applying autofixes changes only supported geometry/aspect-ratio findings.
 - After applying autofixes, the plugin returns to a rescanned result state.
+- Before applying, verify both destinations: in-place changes the original
+  frame/slide, while copy mode creates an `— исправленная копия` root and
+  rescans that copy.
 
 ## Known Manual Validation Boundary
 

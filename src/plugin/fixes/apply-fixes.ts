@@ -1,20 +1,25 @@
-import type { FixTargetDto } from "../../shared/messages";
+import type { FixMode, FixTargetDto } from "../../shared/messages";
 import { getDeltaToFitBounds } from "./geometry";
 
 export interface ApplyFixesResult {
   applied: number;
   skipped: number;
+  copyNames: string[];
+  copyNodeIds: string[];
 }
 
 const TEXT_SAFE_MARGIN = 16;
 const WIDESCREEN_RATIO = 16 / 9;
 
-export async function applyFixes(targets: FixTargetDto[]): Promise<ApplyFixesResult> {
+export async function applyFixes(targets: FixTargetDto[], mode: FixMode): Promise<ApplyFixesResult> {
   let applied = 0;
   let skipped = 0;
+  const copyNames: string[] = [];
+  const copyNodeIds: string[] = [];
   const seen = new Set<string>();
+  const effectiveTargets = mode === "copy" ? cloneTargetRoots(targets, copyNames, copyNodeIds) : targets;
 
-  for (const target of targets) {
+  for (const target of effectiveTargets) {
     const dedupeKey = `${target.nodeId}:${target.ruleId}`;
     if (seen.has(dedupeKey)) {
       continue;
@@ -29,7 +34,79 @@ export async function applyFixes(targets: FixTargetDto[]): Promise<ApplyFixesRes
     }
   }
 
-  return { applied, skipped };
+  return { applied, skipped, copyNames, copyNodeIds };
+}
+
+function cloneTargetRoots(targets: FixTargetDto[], copyNames: string[], copyNodeIds: string[]): FixTargetDto[] {
+  const rootMap = new Map<string, SceneNode>();
+  const clonedTargets: FixTargetDto[] = [];
+
+  for (const target of targets) {
+    const original = figma.getNodeById(target.nodeId);
+    if (!original || !isSceneNode(original)) {
+      clonedTargets.push({ ...target, nodeId: "" });
+      continue;
+    }
+
+    const root = findSlideRoot(original) ?? original;
+    let clone = rootMap.get(root.id);
+    if (!clone) {
+      clone = cloneSceneNode(root);
+      if (!clone) {
+        clonedTargets.push({ ...target, nodeId: "" });
+        continue;
+      }
+      rootMap.set(root.id, clone);
+      clone.name = `${root.name} — исправленная копия`;
+      copyNames.push(clone.name);
+      copyNodeIds.push(clone.id);
+    }
+
+    const path = getChildIndexPath(root, original);
+    const clonedNode = path ? getNodeByChildIndexPath(clone, path) : null;
+    clonedTargets.push({ ...target, nodeId: clonedNode?.id ?? "" });
+  }
+
+  return clonedTargets;
+}
+
+function cloneSceneNode(node: SceneNode): SceneNode | null {
+  if (!("clone" in node) || typeof node.clone !== "function") {
+    return null;
+  }
+
+  return node.clone();
+}
+
+function getChildIndexPath(root: SceneNode, target: SceneNode): number[] | null {
+  const path: number[] = [];
+  let current: BaseNode | null = target;
+
+  while (current && current.id !== root.id) {
+    const parent = current.parent;
+    if (!parent || !("children" in parent)) {
+      return null;
+    }
+    const index = parent.children.findIndex(child => child.id === current?.id);
+    if (index < 0) {
+      return null;
+    }
+    path.unshift(index);
+    current = parent;
+  }
+
+  return current?.id === root.id ? path : null;
+}
+
+function getNodeByChildIndexPath(root: SceneNode, path: number[]): SceneNode | null {
+  let current: SceneNode = root;
+  for (const index of path) {
+    if (!("children" in current) || !current.children[index]) {
+      return null;
+    }
+    current = current.children[index];
+  }
+  return current;
 }
 
 async function applyFix(target: FixTargetDto): Promise<boolean> {
