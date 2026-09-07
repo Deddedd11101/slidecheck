@@ -96,6 +96,8 @@ Current supported autofixes:
 - `visual.layer-blur`: remove layer blur effects;
 - `visual.multiple-shadows`: keep the first visible shadow;
 - `visual.blend-mode`: reset the node blend mode to `NORMAL`;
+- `text.non-system-font`: replace a simple text style with Arial and preserve
+  bold/italic intent;
 - `text.near-slide-edge`: move text inside the 16px safe margin;
 - `text.outside-slide-bounds`: move text back inside the 16px safe margin;
 - `structure.object-outside-slide-bounds`: move object back inside slide bounds;
@@ -106,9 +108,10 @@ Current limitations:
 - fixes mutate the current Figma document and rely on Figma Undo for rollback;
 - the user can choose to apply fixes in place or clone the affected root
   frames/slides first; copy mode rescans the created copies;
-- mask, blur, blend-mode, gradient, nested-frame, and font fixes remain manual;
-- safe-copy workflow is a separate phase because Slides copy behavior needs
-  manual API verification.
+- mask fixes remain manual; nested-frame fixes apply only to plain non-auto-layout
+  frames without fills, strokes, effects, or clipping;
+- copy mode currently clones affected root frames/slides, not the entire page;
+  whole-presentation duplication remains a separate phase.
 
 ## Scan Settings
 

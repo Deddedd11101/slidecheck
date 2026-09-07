@@ -140,6 +140,14 @@ async function applyFix(target: FixTargetDto): Promise<boolean> {
     return resetBlendMode(node);
   }
 
+  if (target.ruleId === "text.non-system-font") {
+    return replaceWithArial(node);
+  }
+
+  if (target.ruleId === "structure.nested-frame") {
+    return replacePlainFrameWithGroup(node);
+  }
+
   if (target.ruleId === "text.near-slide-edge" || target.ruleId === "text.outside-slide-bounds") {
     return moveNodeInsideSlide(node, TEXT_SAFE_MARGIN);
   }
@@ -237,6 +245,65 @@ function resetBlendMode(node: SceneNode): boolean {
   }
 
   node.blendMode = "NORMAL";
+  return true;
+}
+
+async function replaceWithArial(node: SceneNode): Promise<boolean> {
+  if (node.type !== "TEXT" || node.fontName === figma.mixed) {
+    return false;
+  }
+
+  const targetFont: FontName = {
+    family: "Arial",
+    style: getArialStyle(node.fontName.style),
+  };
+
+  if (node.fontName.family === targetFont.family) {
+    return false;
+  }
+
+  try {
+    await figma.loadFontAsync(targetFont);
+    node.fontName = targetFont;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getArialStyle(style: string): string {
+  const normalized = style.toLowerCase();
+  const isBold = normalized.includes("bold") || normalized.includes("semibold") || normalized.includes("black") || normalized.includes("heavy");
+  const isItalic = normalized.includes("italic") || normalized.includes("oblique");
+
+  if (isBold && isItalic) return "Bold Italic";
+  if (isBold) return "Bold";
+  if (isItalic) return "Italic";
+  return "Regular";
+}
+
+function replacePlainFrameWithGroup(node: SceneNode): boolean {
+  if (node.type !== "FRAME" || node.children.length === 0 || node.layoutMode !== "NONE" || node.clipsContent) {
+    return false;
+  }
+
+  if (node.fills === figma.mixed || node.strokes === figma.mixed || node.fills.length > 0 || node.strokes.length > 0 || node.effects.length > 0) {
+    return false;
+  }
+
+  const parent = node.parent;
+  if (!parent || !("children" in parent)) {
+    return false;
+  }
+
+  const index = parent.children.findIndex(child => child.id === node.id);
+  if (index < 0) {
+    return false;
+  }
+
+  const group = figma.group([...node.children], parent, index);
+  group.name = `${node.name} — группа`;
+  node.remove();
   return true;
 }
 
