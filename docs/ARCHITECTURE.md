@@ -91,6 +91,11 @@ and the plugin fix engine implements the matching `ruleId`.
 
 Current supported autofixes:
 
+- `visual.gradient-fill`: replace a gradient with its first color as a solid fill;
+- `visual.background-blur`: remove background blur effects;
+- `visual.layer-blur`: remove layer blur effects;
+- `visual.multiple-shadows`: keep the first visible shadow;
+- `visual.blend-mode`: reset the node blend mode to `NORMAL`;
 - `text.near-slide-edge`: move text inside the 16px safe margin;
 - `text.outside-slide-bounds`: move text back inside the 16px safe margin;
 - `structure.object-outside-slide-bounds`: move object back inside slide bounds;

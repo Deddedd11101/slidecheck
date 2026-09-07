@@ -120,6 +120,26 @@ async function applyFix(target: FixTargetDto): Promise<boolean> {
     return resizeSlideToWidescreen(node);
   }
 
+  if (target.ruleId === "visual.gradient-fill") {
+    return replaceGradientsWithSolidFills(node);
+  }
+
+  if (target.ruleId === "visual.background-blur") {
+    return removeEffects(node, effect => effect.type === "BACKGROUND_BLUR");
+  }
+
+  if (target.ruleId === "visual.layer-blur") {
+    return removeEffects(node, effect => effect.type === "LAYER_BLUR");
+  }
+
+  if (target.ruleId === "visual.multiple-shadows") {
+    return keepOneShadow(node);
+  }
+
+  if (target.ruleId === "visual.blend-mode") {
+    return resetBlendMode(node);
+  }
+
   if (target.ruleId === "text.near-slide-edge" || target.ruleId === "text.outside-slide-bounds") {
     return moveNodeInsideSlide(node, TEXT_SAFE_MARGIN);
   }
@@ -138,6 +158,85 @@ function resizeSlideToWidescreen(node: SceneNode): boolean {
 
   const width = node.width || 1920;
   node.resize(width, Math.round(width / WIDESCREEN_RATIO));
+  return true;
+}
+
+async function replaceGradientsWithSolidFills(node: SceneNode): Promise<boolean> {
+  if (!("fills" in node) || !("setFillsAsync" in node) || node.fills === figma.mixed || !Array.isArray(node.fills)) {
+    return false;
+  }
+
+  let changed = false;
+  const fills = node.fills.map(paint => {
+    if (!paint.type.startsWith("GRADIENT_") || !("gradientStops" in paint) || paint.gradientStops.length === 0) {
+      return paint;
+    }
+
+    const color = paint.gradientStops[0].color;
+    changed = true;
+    return {
+      type: "SOLID" as const,
+      color: { r: color.r, g: color.g, b: color.b },
+      opacity: paint.opacity ?? color.a,
+      visible: paint.visible,
+      blendMode: paint.blendMode,
+    };
+  });
+
+  if (!changed) {
+    return false;
+  }
+
+  await node.setFillsAsync(fills);
+  return true;
+}
+
+function removeEffects(node: SceneNode, shouldRemove: (effect: Effect) => boolean): boolean {
+  if (!("effects" in node)) {
+    return false;
+  }
+
+  const effects = node.effects;
+  const nextEffects = effects.filter(effect => !shouldRemove(effect));
+  if (nextEffects.length === effects.length) {
+    return false;
+  }
+
+  node.effects = nextEffects;
+  return true;
+}
+
+function keepOneShadow(node: SceneNode): boolean {
+  if (!("effects" in node)) {
+    return false;
+  }
+
+  let shadowKept = false;
+  let changed = false;
+  const nextEffects = node.effects.filter(effect => {
+    const isVisibleShadow = effect.visible && (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW");
+    if (!isVisibleShadow || !shadowKept) {
+      if (isVisibleShadow) shadowKept = true;
+      return true;
+    }
+    changed = true;
+    return false;
+  });
+
+  if (!changed) {
+    return false;
+  }
+
+  node.effects = nextEffects;
+  return true;
+}
+
+function resetBlendMode(node: SceneNode): boolean {
+  if (!("blendMode" in node) || node.blendMode === "NORMAL" || node.blendMode === "PASS_THROUGH") {
+    return false;
+  }
+
+  node.blendMode = "NORMAL";
   return true;
 }
 

@@ -8,6 +8,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Градиент может измениться в PPTX",
     why: "Градиентные заливки могут упроститься, исказиться или превратиться в сплошной цвет при экспорте в PowerPoint.",
     fixHint: "Замените градиент на сплошной цвет или растеризуйте объект перед экспортом.",
+    autofix: { label: "Заменить градиент на сплошной цвет" },
   },
   "visual.mask": {
     id: "visual.mask",
@@ -24,6 +25,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Background blur может измениться в PPTX",
     why: "PowerPoint не воспроизводит background blur из Figma один в один.",
     fixHint: "Растеризуйте объект с размытием или замените эффект статичным изображением.",
+    autofix: { label: "Удалить background blur" },
   },
   "visual.layer-blur": {
     id: "visual.layer-blur",
@@ -32,6 +34,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Layer blur может измениться в PPTX",
     why: "Размытие слоя может растеризоваться или выглядеть иначе после экспорта.",
     fixHint: "Растеризуйте размытый слой, если важна точная визуальная передача.",
+    autofix: { label: "Удалить layer blur" },
   },
   "visual.multiple-shadows": {
     id: "visual.multiple-shadows",
@@ -40,6 +43,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Несколько теней могут отличаться в PowerPoint",
     why: "Модель теней в PowerPoint ограниченнее, чем несколько наложенных эффектов в Figma.",
     fixHint: "Упростите тень до одного эффекта или растеризуйте объект.",
+    autofix: { label: "Оставить одну тень" },
   },
   "visual.blend-mode": {
     id: "visual.blend-mode",
@@ -48,6 +52,7 @@ export const RULES: Record<string, RuleDefinition> = {
     title: "Режим наложения может измениться в PPTX",
     why: "Нестандартные blend modes зависят от рендера Figma и могут сплющиться или выглядеть иначе.",
     fixHint: "Сведите объект с режимом наложения или замените эффект обычной прозрачностью/заливкой.",
+    autofix: { label: "Сбросить режим наложения" },
   },
   "text.near-slide-edge": {
     id: "text.near-slide-edge",

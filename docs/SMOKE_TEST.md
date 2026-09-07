@@ -44,7 +44,8 @@ Create a page with at least three top-level frames:
 - Clicking a finding opens detail view.
 - Clicking `К слою` selects and zooms to the affected node.
 - If supported findings exist, the issues screen shows an enabled autofix button.
-- Applying autofixes changes only supported geometry/aspect-ratio findings.
+- Applying autofixes changes only supported geometry, fill, effect, and
+  blend-mode findings.
 - After applying autofixes, the plugin returns to a rescanned result state.
 - Before applying, verify both destinations: in-place changes the original
   frame/slide, while copy mode creates an `— исправленная копия` root and

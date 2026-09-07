@@ -261,6 +261,21 @@
       if (target.ruleId === "structure.non-16-9-slide") {
         return resizeSlideToWidescreen(node);
       }
+      if (target.ruleId === "visual.gradient-fill") {
+        return replaceGradientsWithSolidFills(node);
+      }
+      if (target.ruleId === "visual.background-blur") {
+        return removeEffects(node, (effect) => effect.type === "BACKGROUND_BLUR");
+      }
+      if (target.ruleId === "visual.layer-blur") {
+        return removeEffects(node, (effect) => effect.type === "LAYER_BLUR");
+      }
+      if (target.ruleId === "visual.multiple-shadows") {
+        return keepOneShadow(node);
+      }
+      if (target.ruleId === "visual.blend-mode") {
+        return resetBlendMode(node);
+      }
       if (target.ruleId === "text.near-slide-edge" || target.ruleId === "text.outside-slide-bounds") {
         return moveNodeInsideSlide(node, TEXT_SAFE_MARGIN);
       }
@@ -276,6 +291,74 @@
     }
     const width = node.width || 1920;
     node.resize(width, Math.round(width / WIDESCREEN_RATIO));
+    return true;
+  }
+  function replaceGradientsWithSolidFills(node) {
+    return __async(this, null, function* () {
+      if (!("fills" in node) || !("setFillsAsync" in node) || node.fills === figma.mixed || !Array.isArray(node.fills)) {
+        return false;
+      }
+      let changed = false;
+      const fills = node.fills.map((paint) => {
+        var _a;
+        if (!paint.type.startsWith("GRADIENT_") || !("gradientStops" in paint) || paint.gradientStops.length === 0) {
+          return paint;
+        }
+        const color = paint.gradientStops[0].color;
+        changed = true;
+        return {
+          type: "SOLID",
+          color: { r: color.r, g: color.g, b: color.b },
+          opacity: (_a = paint.opacity) != null ? _a : color.a,
+          visible: paint.visible,
+          blendMode: paint.blendMode
+        };
+      });
+      if (!changed) {
+        return false;
+      }
+      yield node.setFillsAsync(fills);
+      return true;
+    });
+  }
+  function removeEffects(node, shouldRemove) {
+    if (!("effects" in node)) {
+      return false;
+    }
+    const effects = node.effects;
+    const nextEffects = effects.filter((effect) => !shouldRemove(effect));
+    if (nextEffects.length === effects.length) {
+      return false;
+    }
+    node.effects = nextEffects;
+    return true;
+  }
+  function keepOneShadow(node) {
+    if (!("effects" in node)) {
+      return false;
+    }
+    let shadowKept = false;
+    let changed = false;
+    const nextEffects = node.effects.filter((effect) => {
+      const isVisibleShadow = effect.visible && (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW");
+      if (!isVisibleShadow || !shadowKept) {
+        if (isVisibleShadow) shadowKept = true;
+        return true;
+      }
+      changed = true;
+      return false;
+    });
+    if (!changed) {
+      return false;
+    }
+    node.effects = nextEffects;
+    return true;
+  }
+  function resetBlendMode(node) {
+    if (!("blendMode" in node) || node.blendMode === "NORMAL" || node.blendMode === "PASS_THROUGH") {
+      return false;
+    }
+    node.blendMode = "NORMAL";
     return true;
   }
   function moveNodeInsideSlide(node, margin) {
@@ -326,7 +409,8 @@
       severity: "warning",
       title: "\u0413\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043C\u043E\u0436\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C\u0441\u044F \u0432 PPTX",
       why: "\u0413\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u043D\u044B\u0435 \u0437\u0430\u043B\u0438\u0432\u043A\u0438 \u043C\u043E\u0433\u0443\u0442 \u0443\u043F\u0440\u043E\u0441\u0442\u0438\u0442\u044C\u0441\u044F, \u0438\u0441\u043A\u0430\u0437\u0438\u0442\u044C\u0441\u044F \u0438\u043B\u0438 \u043F\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u0442\u044C\u0441\u044F \u0432 \u0441\u043F\u043B\u043E\u0448\u043D\u043E\u0439 \u0446\u0432\u0435\u0442 \u043F\u0440\u0438 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0435 \u0432 PowerPoint.",
-      fixHint: "\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043D\u0430 \u0441\u043F\u043B\u043E\u0448\u043D\u043E\u0439 \u0446\u0432\u0435\u0442 \u0438\u043B\u0438 \u0440\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u043F\u0435\u0440\u0435\u0434 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u043E\u043C."
+      fixHint: "\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043D\u0430 \u0441\u043F\u043B\u043E\u0448\u043D\u043E\u0439 \u0446\u0432\u0435\u0442 \u0438\u043B\u0438 \u0440\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u043F\u0435\u0440\u0435\u0434 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u043E\u043C.",
+      autofix: { label: "\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043D\u0430 \u0441\u043F\u043B\u043E\u0448\u043D\u043E\u0439 \u0446\u0432\u0435\u0442" }
     },
     "visual.mask": {
       id: "visual.mask",
@@ -342,7 +426,8 @@
       severity: "warning",
       title: "Background blur \u043C\u043E\u0436\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C\u0441\u044F \u0432 PPTX",
       why: "PowerPoint \u043D\u0435 \u0432\u043E\u0441\u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442 background blur \u0438\u0437 Figma \u043E\u0434\u0438\u043D \u0432 \u043E\u0434\u0438\u043D.",
-      fixHint: "\u0420\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u0441 \u0440\u0430\u0437\u043C\u044B\u0442\u0438\u0435\u043C \u0438\u043B\u0438 \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u044D\u0444\u0444\u0435\u043A\u0442 \u0441\u0442\u0430\u0442\u0438\u0447\u043D\u044B\u043C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435\u043C."
+      fixHint: "\u0420\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u0441 \u0440\u0430\u0437\u043C\u044B\u0442\u0438\u0435\u043C \u0438\u043B\u0438 \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u044D\u0444\u0444\u0435\u043A\u0442 \u0441\u0442\u0430\u0442\u0438\u0447\u043D\u044B\u043C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435\u043C.",
+      autofix: { label: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C background blur" }
     },
     "visual.layer-blur": {
       id: "visual.layer-blur",
@@ -350,7 +435,8 @@
       severity: "warning",
       title: "Layer blur \u043C\u043E\u0436\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C\u0441\u044F \u0432 PPTX",
       why: "\u0420\u0430\u0437\u043C\u044B\u0442\u0438\u0435 \u0441\u043B\u043E\u044F \u043C\u043E\u0436\u0435\u0442 \u0440\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0438\u043B\u0438 \u0432\u044B\u0433\u043B\u044F\u0434\u0435\u0442\u044C \u0438\u043D\u0430\u0447\u0435 \u043F\u043E\u0441\u043B\u0435 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430.",
-      fixHint: "\u0420\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u0440\u0430\u0437\u043C\u044B\u0442\u044B\u0439 \u0441\u043B\u043E\u0439, \u0435\u0441\u043B\u0438 \u0432\u0430\u0436\u043D\u0430 \u0442\u043E\u0447\u043D\u0430\u044F \u0432\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0430."
+      fixHint: "\u0420\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u0440\u0430\u0437\u043C\u044B\u0442\u044B\u0439 \u0441\u043B\u043E\u0439, \u0435\u0441\u043B\u0438 \u0432\u0430\u0436\u043D\u0430 \u0442\u043E\u0447\u043D\u0430\u044F \u0432\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0430.",
+      autofix: { label: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C layer blur" }
     },
     "visual.multiple-shadows": {
       id: "visual.multiple-shadows",
@@ -358,7 +444,8 @@
       severity: "suggestion",
       title: "\u041D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0442\u0435\u043D\u0435\u0439 \u043C\u043E\u0433\u0443\u0442 \u043E\u0442\u043B\u0438\u0447\u0430\u0442\u044C\u0441\u044F \u0432 PowerPoint",
       why: "\u041C\u043E\u0434\u0435\u043B\u044C \u0442\u0435\u043D\u0435\u0439 \u0432 PowerPoint \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u043D\u0435\u0435, \u0447\u0435\u043C \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u043D\u044B\u0445 \u044D\u0444\u0444\u0435\u043A\u0442\u043E\u0432 \u0432 Figma.",
-      fixHint: "\u0423\u043F\u0440\u043E\u0441\u0442\u0438\u0442\u0435 \u0442\u0435\u043D\u044C \u0434\u043E \u043E\u0434\u043D\u043E\u0433\u043E \u044D\u0444\u0444\u0435\u043A\u0442\u0430 \u0438\u043B\u0438 \u0440\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442."
+      fixHint: "\u0423\u043F\u0440\u043E\u0441\u0442\u0438\u0442\u0435 \u0442\u0435\u043D\u044C \u0434\u043E \u043E\u0434\u043D\u043E\u0433\u043E \u044D\u0444\u0444\u0435\u043A\u0442\u0430 \u0438\u043B\u0438 \u0440\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442.",
+      autofix: { label: "\u041E\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u043E\u0434\u043D\u0443 \u0442\u0435\u043D\u044C" }
     },
     "visual.blend-mode": {
       id: "visual.blend-mode",
@@ -366,7 +453,8 @@
       severity: "warning",
       title: "\u0420\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u043C\u043E\u0436\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C\u0441\u044F \u0432 PPTX",
       why: "\u041D\u0435\u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0435 blend modes \u0437\u0430\u0432\u0438\u0441\u044F\u0442 \u043E\u0442 \u0440\u0435\u043D\u0434\u0435\u0440\u0430 Figma \u0438 \u043C\u043E\u0433\u0443\u0442 \u0441\u043F\u043B\u044E\u0449\u0438\u0442\u044C\u0441\u044F \u0438\u043B\u0438 \u0432\u044B\u0433\u043B\u044F\u0434\u0435\u0442\u044C \u0438\u043D\u0430\u0447\u0435.",
-      fixHint: "\u0421\u0432\u0435\u0434\u0438\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u0441 \u0440\u0435\u0436\u0438\u043C\u043E\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0438\u043B\u0438 \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u044D\u0444\u0444\u0435\u043A\u0442 \u043E\u0431\u044B\u0447\u043D\u043E\u0439 \u043F\u0440\u043E\u0437\u0440\u0430\u0447\u043D\u043E\u0441\u0442\u044C\u044E/\u0437\u0430\u043B\u0438\u0432\u043A\u043E\u0439."
+      fixHint: "\u0421\u0432\u0435\u0434\u0438\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u0441 \u0440\u0435\u0436\u0438\u043C\u043E\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0438\u043B\u0438 \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u044D\u0444\u0444\u0435\u043A\u0442 \u043E\u0431\u044B\u0447\u043D\u043E\u0439 \u043F\u0440\u043E\u0437\u0440\u0430\u0447\u043D\u043E\u0441\u0442\u044C\u044E/\u0437\u0430\u043B\u0438\u0432\u043A\u043E\u0439.",
+      autofix: { label: "\u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F" }
     },
     "text.near-slide-edge": {
       id: "text.near-slide-edge",
