@@ -44,14 +44,10 @@ Decision: the issues screen groups findings by slide/frame first, then by issue 
 
 Reason: designers fix presentations slide by slide. Category-first grouping made full-page scans feel duplicated and hard to navigate.
 
-## 2026-09-02: Ignore Is Session-Only
+## 2026-09-07: Keep The First Scanner Flow Simple
 
-Decision: the UI can hide individual findings in the current scan result, but ignores are not persisted to the Figma file yet.
+Decision: keep one standard scan mode and show every finding. Do not expose strictness, rule-group filters, or ignore controls in the primary flow yet.
 
-Reason: early rule tuning needs a quick way to reduce noise without permanently suppressing problems or writing plugin metadata into user files.
+Reason: the rule catalog and false-positive profile are still being validated. Extra controls make the result harder to understand before we know which filtering decisions are actually useful.
 
-## 2026-09-03: Add Scan Strictness Before More Rules
-
-Decision: add scanner settings and a strictness selector before expanding the rule catalog further.
-
-Reason: the linter already detects real issues. More value now comes from controlling noise and false positives than from adding unchecked rules.
+Autofix selection remains explicit: only rules with a verified algorithmic fix are shown in the fix step, selected by checkboxes.

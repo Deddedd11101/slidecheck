@@ -119,7 +119,7 @@ function focusNodeSmooth(node: SceneNode): void {
   const targetZoom = getTargetZoom(bounds);
   const startCenter = figma.viewport.center;
   const startZoom = figma.viewport.zoom;
-  const durationMs = 310;
+  const durationMs = 400;
   const startedAt = Date.now();
 
   const step = () => {
@@ -149,7 +149,7 @@ function getTargetZoom(bounds: { width: number; height: number }): number {
     viewportBounds.height / Math.max(bounds.height * padding, 1),
   );
 
-  return clamp(fitZoom, 0.35, 2);
+  return clamp(fitZoom * 0.82, 0.35, 2);
 }
 
 function easeOutCubic(value: number): number {

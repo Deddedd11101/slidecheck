@@ -713,7 +713,7 @@
     const targetZoom = getTargetZoom(bounds);
     const startCenter = figma.viewport.center;
     const startZoom = figma.viewport.zoom;
-    const durationMs = 310;
+    const durationMs = 400;
     const startedAt = Date.now();
     const step = () => {
       const elapsed = Date.now() - startedAt;
@@ -737,7 +737,7 @@
       viewportBounds.width / Math.max(bounds.width * padding, 1),
       viewportBounds.height / Math.max(bounds.height * padding, 1)
     );
-    return clamp2(fitZoom, 0.35, 2);
+    return clamp2(fitZoom * 0.82, 0.35, 2);
   }
   function easeOutCubic(value) {
     return 1 - Math.pow(1 - value, 3);

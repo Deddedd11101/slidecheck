@@ -105,13 +105,15 @@ Current limitations:
 
 ## Scan Settings
 
-The UI sends scan settings with each scan request:
+The transport keeps `ScanSettings` for forward compatibility, but the primary UI
+currently sends one standard configuration and does not expose strictness,
+rule-group filters, or ignore controls.
 
-- `strictness`: `soft`, `standard`, or `strict`;
-- `enabledGroups`: toggles for visual/text/structure/interactive/export checks.
+Current standard effects:
 
-Current strictness effects:
+- default text safe margin;
+- minor decorative object overflow is downgraded to a suggestion;
+- all registered rule groups are enabled.
 
-- soft: smaller text safe margin and ignores minor decorative object overflow;
-- standard: default margin and downgrades minor object overflow to a suggestion;
-- strict: larger text safe margin and reports every object overflow as a warning.
+Additional scan modes can be reconsidered after the rule catalog and false
+positive profile are validated against real team files.
