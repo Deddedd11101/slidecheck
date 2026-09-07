@@ -41,7 +41,7 @@ figma.ui.onmessage = async (message: UiToPluginMessage) => {
     try {
       const applyResult = await applyFixes(message.targets, message.mode);
       const scanScope = message.mode === "copy" && applyResult.copyNodeIds.length > 0
-        ? selectCopiedRoots(applyResult.copyNodeIds)
+        ? await selectCopiedRoots(applyResult.copyNodeIds)
         : message.scope;
       const document = collectFigmaDocument(scanScope);
       const findings = scanDocument(document, message.settings);
@@ -67,9 +67,8 @@ function postToUi(message: PluginToUiMessage): void {
   figma.ui.postMessage(message);
 }
 
-function selectCopiedRoots(nodeIds: string[]): "selected" {
-  const nodes = nodeIds
-    .map(nodeId => figma.getNodeById(nodeId))
+async function selectCopiedRoots(nodeIds: string[]): Promise<"selected"> {
+  const nodes = (await Promise.all(nodeIds.map(nodeId => figma.getNodeByIdAsync(nodeId))))
     .filter((node): node is SceneNode => Boolean(node) && isSelectableSceneNode(node));
 
   if (nodes.length > 0) {

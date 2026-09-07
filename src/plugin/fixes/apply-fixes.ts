@@ -17,7 +17,7 @@ export async function applyFixes(targets: FixTargetDto[], mode: FixMode): Promis
   const copyNames: string[] = [];
   const copyNodeIds: string[] = [];
   const seen = new Set<string>();
-  const effectiveTargets = mode === "copy" ? cloneTargetRoots(targets, copyNames, copyNodeIds) : targets;
+  const effectiveTargets = mode === "copy" ? await cloneTargetRoots(targets, copyNames, copyNodeIds) : targets;
 
   for (const target of effectiveTargets) {
     const dedupeKey = `${target.nodeId}:${target.ruleId}`;
@@ -37,12 +37,12 @@ export async function applyFixes(targets: FixTargetDto[], mode: FixMode): Promis
   return { applied, skipped, copyNames, copyNodeIds };
 }
 
-function cloneTargetRoots(targets: FixTargetDto[], copyNames: string[], copyNodeIds: string[]): FixTargetDto[] {
+async function cloneTargetRoots(targets: FixTargetDto[], copyNames: string[], copyNodeIds: string[]): Promise<FixTargetDto[]> {
   const rootMap = new Map<string, SceneNode>();
   const clonedTargets: FixTargetDto[] = [];
 
   for (const target of targets) {
-    const original = figma.getNodeById(target.nodeId);
+    const original = await figma.getNodeByIdAsync(target.nodeId);
     if (!original || !isSceneNode(original)) {
       clonedTargets.push({ ...target, nodeId: "" });
       continue;

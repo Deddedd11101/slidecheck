@@ -171,7 +171,7 @@
       const copyNames = [];
       const copyNodeIds = [];
       const seen = /* @__PURE__ */ new Set();
-      const effectiveTargets = mode === "copy" ? cloneTargetRoots(targets, copyNames, copyNodeIds) : targets;
+      const effectiveTargets = mode === "copy" ? yield cloneTargetRoots(targets, copyNames, copyNodeIds) : targets;
       for (const target of effectiveTargets) {
         const dedupeKey = `${target.nodeId}:${target.ruleId}`;
         if (seen.has(dedupeKey)) {
@@ -189,33 +189,35 @@
     });
   }
   function cloneTargetRoots(targets, copyNames, copyNodeIds) {
-    var _a, _b;
-    const rootMap = /* @__PURE__ */ new Map();
-    const clonedTargets = [];
-    for (const target of targets) {
-      const original = figma.getNodeById(target.nodeId);
-      if (!original || !isSceneNode(original)) {
-        clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: "" }));
-        continue;
-      }
-      const root = (_a = findSlideRoot(original)) != null ? _a : original;
-      let clone = rootMap.get(root.id);
-      if (!clone) {
-        clone = cloneSceneNode(root);
-        if (!clone) {
+    return __async(this, null, function* () {
+      var _a, _b;
+      const rootMap = /* @__PURE__ */ new Map();
+      const clonedTargets = [];
+      for (const target of targets) {
+        const original = yield figma.getNodeByIdAsync(target.nodeId);
+        if (!original || !isSceneNode(original)) {
           clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: "" }));
           continue;
         }
-        rootMap.set(root.id, clone);
-        clone.name = `${root.name} \u2014 \u0438\u0441\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u043A\u043E\u043F\u0438\u044F`;
-        copyNames.push(clone.name);
-        copyNodeIds.push(clone.id);
+        const root = (_a = findSlideRoot(original)) != null ? _a : original;
+        let clone = rootMap.get(root.id);
+        if (!clone) {
+          clone = cloneSceneNode(root);
+          if (!clone) {
+            clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: "" }));
+            continue;
+          }
+          rootMap.set(root.id, clone);
+          clone.name = `${root.name} \u2014 \u0438\u0441\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u043A\u043E\u043F\u0438\u044F`;
+          copyNames.push(clone.name);
+          copyNodeIds.push(clone.id);
+        }
+        const path = getChildIndexPath(root, original);
+        const clonedNode = path ? getNodeByChildIndexPath(clone, path) : null;
+        clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: (_b = clonedNode == null ? void 0 : clonedNode.id) != null ? _b : "" }));
       }
-      const path = getChildIndexPath(root, original);
-      const clonedNode = path ? getNodeByChildIndexPath(clone, path) : null;
-      clonedTargets.push(__spreadProps(__spreadValues({}, target), { nodeId: (_b = clonedNode == null ? void 0 : clonedNode.id) != null ? _b : "" }));
-    }
-    return clonedTargets;
+      return clonedTargets;
+    });
   }
   function cloneSceneNode(node) {
     if (!("clone" in node) || typeof node.clone !== "function") {
@@ -708,7 +710,7 @@
     if (message.type === "APPLY_FIXES_REQUEST") {
       try {
         const applyResult = yield applyFixes(message.targets, message.mode);
-        const scanScope = message.mode === "copy" && applyResult.copyNodeIds.length > 0 ? selectCopiedRoots(applyResult.copyNodeIds) : message.scope;
+        const scanScope = message.mode === "copy" && applyResult.copyNodeIds.length > 0 ? yield selectCopiedRoots(applyResult.copyNodeIds) : message.scope;
         const document = collectFigmaDocument(scanScope);
         const findings = scanDocument(document, message.settings);
         postToUi({
@@ -730,11 +732,13 @@
     figma.ui.postMessage(message);
   }
   function selectCopiedRoots(nodeIds) {
-    const nodes = nodeIds.map((nodeId) => figma.getNodeById(nodeId)).filter((node) => Boolean(node) && isSelectableSceneNode(node));
-    if (nodes.length > 0) {
-      figma.currentPage.selection = nodes;
-    }
-    return "selected";
+    return __async(this, null, function* () {
+      const nodes = (yield Promise.all(nodeIds.map((nodeId) => figma.getNodeByIdAsync(nodeId)))).filter((node) => Boolean(node) && isSelectableSceneNode(node));
+      if (nodes.length > 0) {
+        figma.currentPage.selection = nodes;
+      }
+      return "selected";
+    });
   }
   function toIssueDto(finding, document) {
     var _a, _b;
