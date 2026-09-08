@@ -30,7 +30,7 @@
 
 ## Phase 4: Export Experiment
 
-- evaluate image-based PPTX generation;
+- image-based PPTX generation is implemented for selected/page roots;
 - evaluate editable PPTX generation feasibility;
 - decide whether export belongs in this plugin or a separate package.
 

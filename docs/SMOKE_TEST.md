@@ -50,6 +50,9 @@ Create a page with at least three top-level frames:
 - Before applying, verify both destinations: in-place changes the original
   frame/slide, while copy mode creates an `— исправленная копия` root and
   rescans that copy.
+- The PPTX button downloads an image-only 16:9 deck containing the scanned
+  page or selected roots. Text and shapes are intentionally not editable in
+  this first export slice.
 
 ## Known Manual Validation Boundary
 
@@ -59,4 +62,5 @@ The following cannot be fully verified by local unit tests:
 - selection/zoom behavior inside Figma;
 - Figma Slides node traversal;
 - real Figma API node mutation through autofixes;
-- real export behavior after PPTX export.
+- real export behavior after PPTX export;
+- image-only PPTX download from the plugin UI.

@@ -40,10 +40,18 @@ export interface FixRunResultDto {
   copyNames?: string[];
 }
 
+export interface ExportedSlideDto {
+  name: string;
+  width: number;
+  height: number;
+  bytes: Uint8Array;
+}
+
 export type UiToPluginMessage =
   | { type: "SCAN_REQUEST"; scope: ScanScope; settings: ScanSettings }
   | { type: "SELECT_NODE_REQUEST"; nodeId: string }
-  | { type: "APPLY_FIXES_REQUEST"; scope: ScanScope; settings: ScanSettings; targets: FixTargetDto[]; mode: FixMode };
+  | { type: "APPLY_FIXES_REQUEST"; scope: ScanScope; settings: ScanSettings; targets: FixTargetDto[]; mode: FixMode }
+  | { type: "EXPORT_PPTX_REQUEST"; scope: ScanScope };
 
 export type PluginToUiMessage =
   | { type: "SCAN_RESULT"; issues: IssueDto[]; slideCount: number }
@@ -51,4 +59,6 @@ export type PluginToUiMessage =
   | { type: "SELECT_NODE_RESULT"; nodeId: string }
   | { type: "SELECT_NODE_ERROR"; message: string }
   | { type: "APPLY_FIXES_RESULT"; result: FixRunResultDto }
-  | { type: "APPLY_FIXES_ERROR"; message: string };
+  | { type: "APPLY_FIXES_ERROR"; message: string }
+  | { type: "EXPORT_PPTX_RESULT"; slides: ExportedSlideDto[] }
+  | { type: "EXPORT_PPTX_ERROR"; message: string };

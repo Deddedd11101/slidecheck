@@ -905,6 +905,17 @@
         });
       }
     }
+    if (message.type === "EXPORT_PPTX_REQUEST") {
+      try {
+        const slides = yield exportSlidesAsPng(message.scope);
+        postToUi({ type: "EXPORT_PPTX_RESULT", slides });
+      } catch (error) {
+        postToUi({
+          type: "EXPORT_PPTX_ERROR",
+          message: error instanceof Error ? error.message : "Unknown PPTX export error"
+        });
+      }
+    }
   });
   function postToUi(message) {
     figma.ui.postMessage(message);
@@ -917,6 +928,43 @@
       }
       return "selected";
     });
+  }
+  function exportSlidesAsPng(scope) {
+    return __async(this, null, function* () {
+      const roots = getExportRoots(scope);
+      if (roots.length === 0) {
+        throw new Error("\u041D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E \u043D\u0438 \u043E\u0434\u043D\u043E\u0433\u043E \u0444\u0440\u0435\u0439\u043C\u0430 \u0438\u043B\u0438 \u0441\u043B\u0430\u0439\u0434\u0430 \u0434\u043B\u044F \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430");
+      }
+      const exported = [];
+      for (const root of roots) {
+        const bytes = yield root.exportAsync({
+          format: "PNG",
+          constraint: { type: "WIDTH", value: 1920 }
+        });
+        exported.push({
+          name: root.name,
+          width: root.width,
+          height: root.height,
+          bytes
+        });
+      }
+      return exported;
+    });
+  }
+  function getExportRoots(scope) {
+    if (figma.editorType === "slides") {
+      if (scope === "selected") {
+        const selected = figma.currentPage.selection.filter((node) => node.type === "SLIDE");
+        if (selected.length > 0) return selected;
+        if (figma.currentPage.focusedSlide) return [figma.currentPage.focusedSlide];
+      }
+      return figma.getSlideGrid().flat();
+    }
+    if (scope === "selected") {
+      const selected = figma.currentPage.selection.filter((node) => node.type === "FRAME");
+      if (selected.length > 0) return selected;
+    }
+    return figma.currentPage.children.filter((node) => node.type === "FRAME");
   }
   function toIssueDto(finding, document) {
     var _a, _b;

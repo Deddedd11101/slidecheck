@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import PptxGenJS from "pptxgenjs";
 import {
   ChevronRight, ChevronLeft, ChevronDown,
   AlertTriangle, CheckCircle, Info,
@@ -8,11 +9,11 @@ import {
   Loader2, Circle, XCircle,
 } from "lucide-react";
 import type { IssueGroup } from "../shared/types";
-import type { EnabledRuleGroups, FixMode, FixRunResultDto, FixTargetDto, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, UiToPluginMessage } from "../shared/messages";
+import type { EnabledRuleGroups, ExportedSlideDto, FixMode, FixRunResultDto, FixTargetDto, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, UiToPluginMessage } from "../shared/messages";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type WizardStep = "source" | "scan" | "issues" | "detail" | "fixmode" | "applying" | "final";
+type WizardStep = "source" | "scan" | "issues" | "detail" | "exporting" | "fixmode" | "applying" | "final";
 type Issue = IssueDto;
 
 function isFixableIssue(issue: Issue): issue is Issue & { ruleId: string; nodeId: string } {
@@ -84,12 +85,13 @@ function computeScore(issues: Issue[]): number {
   return getScoreBreakdown(issues).score;
 }
 
-const STEP_ORDER: WizardStep[] = ["source", "scan", "issues", "fixmode", "applying", "final"];
+const STEP_ORDER: WizardStep[] = ["source", "scan", "issues", "exporting", "fixmode", "applying", "final"];
 const STEP_TITLES: Partial<Record<WizardStep, string>> = {
   source:   "Источник",
   scan:     "Сканирование",
   issues:   "Проблемы",
   detail:   "Детали",
+  exporting: "Экспорт PPTX",
   fixmode:  "Режим исправления",
   applying: "Применение",
   final:    "Готово",
@@ -312,12 +314,115 @@ function ScanStep({ scope, settings, onDone, onBack }: {
 }
 
 
+// ─── Step: Export ─────────────────────────────────────────────────────────
+
+function ExportStep({ scope, onDone, onError, onBack }: {
+  scope: ScanScope;
+  onDone: (fileName: string) => void;
+  onError: (message: string) => void;
+  onBack: () => void;
+}) {
+  const [status, setStatus] = useState("Запрашиваю изображения фреймов…");
+  const calledRef = useRef(false);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data?.pluginMessage as PluginToUiMessage | undefined;
+      if (!message || calledRef.current) return;
+
+      if (message.type === "EXPORT_PPTX_RESULT") {
+        calledRef.current = true;
+        setStatus(`Собираю PPTX из ${message.slides.length} слайдов…`);
+        void createPptxFile(message.slides)
+          .then(onDone)
+          .catch(error => onError(error instanceof Error ? error.message : "Не удалось собрать PPTX"));
+      }
+
+      if (message.type === "EXPORT_PPTX_ERROR") {
+        calledRef.current = true;
+        onError(message.message);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    if (isStandaloneBrowser()) {
+      onError("Экспорт PPTX доступен внутри Figma");
+    } else {
+      postToPlugin({ type: "EXPORT_PPTX_REQUEST", scope });
+    }
+
+    return () => window.removeEventListener("message", handleMessage);
+  }, [onDone, onError, scope]);
+
+  return (
+    <div className="flex flex-col gap-5 px-4 py-5">
+      <div className="flex items-center gap-2.5">
+        <Loader2 className="w-5 h-5 text-lime-400 animate-spin" />
+        <span className="text-[12px] text-white/65">{status}</span>
+      </div>
+      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-3">
+        <p className="text-[11px] text-white/55 leading-relaxed">
+          Будет скачан PPTX, где каждый выбранный фрейм или слайд представлен как изображение 16:9.
+        </p>
+      </div>
+      <GhostBtn onClick={onBack}>Отмена</GhostBtn>
+    </div>
+  );
+}
+
+async function createPptxFile(slides: ExportedSlideDto[]): Promise<string> {
+  if (slides.length === 0) {
+    throw new Error("Нет изображений для экспорта");
+  }
+
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE";
+  pptx.author = "SlideCheck";
+  pptx.subject = "PPTX export from SlideCheck";
+  pptx.title = "SlideCheck export";
+  pptx.company = "SlideCheck";
+
+  const slideWidth = 13.333;
+  const slideHeight = 7.5;
+
+  for (const source of slides) {
+    const outputSlide = pptx.addSlide();
+    outputSlide.background = { color: "FFFFFF" };
+    const imageData = bytesToPngDataUrl(source.bytes);
+    const imageRatio = source.width / Math.max(source.height, 1);
+    const slideRatio = slideWidth / slideHeight;
+    const imageWidth = imageRatio >= slideRatio ? slideWidth : slideHeight * imageRatio;
+    const imageHeight = imageRatio >= slideRatio ? slideWidth / imageRatio : slideHeight;
+
+    outputSlide.addImage({
+      data: imageData,
+      x: (slideWidth - imageWidth) / 2,
+      y: (slideHeight - imageHeight) / 2,
+      w: imageWidth,
+      h: imageHeight,
+    });
+  }
+
+  const fileName = `slidecheck-export-${new Date().toISOString().slice(0, 10)}.pptx`;
+  await pptx.writeFile({ fileName });
+  return fileName;
+}
+
+function bytesToPngDataUrl(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return `data:image/png;base64,${btoa(binary)}`;
+}
+
 // ─── Step: Issues ─────────────────────────────────────────────────────────
 
-function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onRestart }: {
+function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onRestart, onExport }: {
   issues: Issue[]; slideCount: number;
   fixableCount: number;
-  onDetail: (issue: Issue) => void; onFix: () => void; onRestart: () => void;
+  onDetail: (issue: Issue) => void; onFix: () => void; onRestart: () => void; onExport: () => void;
 }) {
   const slides = groupIssuesBySlide(issues);
   const [activeSlide, setActiveSlide] = useState(slides[0]?.name ?? "");
@@ -472,6 +577,12 @@ function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onResta
           <button onClick={onFix} disabled={fixableCount === 0}
             className="w-full bg-lime-400 hover:bg-lime-300 active:bg-lime-500 disabled:bg-white/[0.03] border border-transparent disabled:border-white/[0.06] text-black disabled:text-white/25 text-[12px] font-medium py-2.5 rounded-xl transition-colors">
             {fixableCount > 0 ? `Исправить доступные проблемы: ${fixableCount}` : "Для этих проблем пока нет автофиксов"}
+          </button>
+        )}
+        {issues.length > 0 && (
+          <button onClick={onExport}
+            className="w-full border border-lime-400/20 hover:border-lime-400/40 hover:bg-lime-400/[0.05] text-lime-300/75 hover:text-lime-200 text-[11px] font-medium py-2.5 rounded-xl transition-colors">
+            <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Скачать PPTX как изображения</span>
           </button>
         )}
         <GhostBtn onClick={onRestart}>Новая проверка</GhostBtn>
@@ -871,10 +982,11 @@ export default function App() {
   const fixableIssues = visibleIssues.filter(isFixableIssue);
   const scoreBefore = computeScore(visibleIssues);
   const stepIdx     = STEP_ORDER.indexOf(step === "detail" ? "issues" : step);
-  const canGoBack = ["detail", "fixmode", "scan", "issues"].includes(step);
+  const canGoBack = ["detail", "exporting", "fixmode", "scan", "issues"].includes(step);
 
   function goBack() {
     if (step === "detail")  setStep("issues");
+    if (step === "exporting") setStep("issues");
     if (step === "fixmode") setStep("issues");
     if (step === "scan")    setStep("source");
     if (step === "issues")  setStep("source");
@@ -885,6 +997,16 @@ export default function App() {
   function startScan(scope: ScanScope) {
     setScanScope(scope);
     setStep("scan");
+  }
+
+  function startExport() {
+    setNotice(null);
+    setStep("exporting");
+  }
+
+  function finishExport(fileName: string) {
+    setNotice(`PPTX скачан: ${fileName}`);
+    setStep("issues");
   }
 
   function finishScan(nextIssues: Issue[], nextSlideCount: number) {
@@ -913,6 +1035,9 @@ export default function App() {
 
   function finishFixes(result: FixRunResultDto) {
     setIssues(result.issues);
+    if (result.copyNames && result.copyNames.length > 0) {
+      setScanScope("selected");
+    }
     setSlideCount(result.slideCount);
     setFixedCount(result.applied);
     setSkippedFixCount(result.skipped);
@@ -984,11 +1109,17 @@ export default function App() {
           <IssuesStep issues={visibleIssues} slideCount={slideCount} fixableCount={fixableIssues.length}
             onDetail={(iss) => { setDetail(iss); setStep("detail"); }}
             onFix={() => startFixes()}
-            onRestart={() => setStep("source")} />
+            onRestart={() => setStep("source")}
+            onExport={startExport} />
         )}
         {step === "detail" && detail && (
           <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode}
             onFix={(issue) => { if (isFixableIssue(issue)) startFixes([issue]); }} />
+        )}
+        {step === "exporting" && (
+          <ExportStep scope={scanScope} onDone={finishExport}
+            onError={(message) => { setNotice(message); setStep("issues"); }}
+            onBack={() => setStep("issues")} />
         )}
         {step === "fixmode" && (
           <FixModeStep issues={pendingFixIssues} onNext={(targets, mode) => { setPendingFixTargets(targets); setFixMode(mode); setStep("applying"); }} />

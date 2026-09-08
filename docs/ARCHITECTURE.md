@@ -60,6 +60,13 @@ UI autofix button
   -> run scanner rules again
   -> APPLY_FIXES_RESULT
   -> UI renders updated findings
+
+UI export button
+  -> EXPORT_PPTX_REQUEST
+  -> plugin exports selected roots as PNG
+  -> EXPORT_PPTX_RESULT
+  -> UI builds an image-only 16:9 PPTX
+  -> browser downloads the file
 ```
 
 ## Rule Design

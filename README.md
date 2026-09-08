@@ -3,7 +3,9 @@
 
 Deterministic Figma/Figma Slides plugin for finding PPTX export risks before a presentation handoff.
 
-The current project started as a UI prototype. The next engineering milestone is replacing mock scan data with real Figma-side scanning and a tested rule engine.
+The plugin now scans real Figma/Figma Slides documents, supports deterministic
+autofixes for selected rules, and can download an image-only PPTX from scanned
+frames or slides.
 
 ## MVP
 
@@ -11,11 +13,11 @@ The current project started as a UI prototype. The next engineering milestone is
 - Detect predefined export-risk rules.
 - Show grouped findings in the existing UI.
 - Select and zoom to the affected node when a finding is clicked.
+- Download selected/page roots as an image-only 16:9 PPTX.
 
 Out of scope for MVP:
 
 - AI-based analysis.
-- Automatic fixes.
 - Full editable PPTX export.
 
 ## Development

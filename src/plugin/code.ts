@@ -3,7 +3,7 @@ import { applyFixes } from "./fixes/apply-fixes";
 import { RULES } from "./rules/registry";
 import { scanDocument } from "./scanner/scan-document";
 import type { Finding, NormalizedDocument } from "../shared/types";
-import type { IssueDto, PluginToUiMessage, UiToPluginMessage } from "../shared/messages";
+import type { ExportedSlideDto, IssueDto, PluginToUiMessage, ScanScope, UiToPluginMessage } from "../shared/messages";
 
 figma.showUI(__html__, { width: 400, height: 620, title: "SlideCheck" });
 
@@ -61,6 +61,18 @@ figma.ui.onmessage = async (message: UiToPluginMessage) => {
       });
     }
   }
+
+  if (message.type === "EXPORT_PPTX_REQUEST") {
+    try {
+      const slides = await exportSlidesAsPng(message.scope);
+      postToUi({ type: "EXPORT_PPTX_RESULT", slides });
+    } catch (error) {
+      postToUi({
+        type: "EXPORT_PPTX_ERROR",
+        message: error instanceof Error ? error.message : "Unknown PPTX export error",
+      });
+    }
+  }
 };
 
 function postToUi(message: PluginToUiMessage): void {
@@ -76,6 +88,48 @@ async function selectCopiedRoots(nodeIds: string[]): Promise<"selected"> {
   }
 
   return "selected";
+}
+
+async function exportSlidesAsPng(scope: ScanScope): Promise<ExportedSlideDto[]> {
+  const roots = getExportRoots(scope);
+  if (roots.length === 0) {
+    throw new Error("Не найдено ни одного фрейма или слайда для экспорта");
+  }
+
+  const exported: ExportedSlideDto[] = [];
+  for (const root of roots) {
+    const bytes = await root.exportAsync({
+      format: "PNG",
+      constraint: { type: "WIDTH", value: 1920 },
+    });
+    exported.push({
+      name: root.name,
+      width: root.width,
+      height: root.height,
+      bytes,
+    });
+  }
+
+  return exported;
+}
+
+function getExportRoots(scope: ScanScope): Array<FrameNode | SlideNode> {
+  if (figma.editorType === "slides") {
+    if (scope === "selected") {
+      const selected = figma.currentPage.selection.filter((node): node is SlideNode => node.type === "SLIDE");
+      if (selected.length > 0) return selected;
+      if (figma.currentPage.focusedSlide) return [figma.currentPage.focusedSlide];
+    }
+
+    return figma.getSlideGrid().flat();
+  }
+
+  if (scope === "selected") {
+    const selected = figma.currentPage.selection.filter((node): node is FrameNode => node.type === "FRAME");
+    if (selected.length > 0) return selected;
+  }
+
+  return figma.currentPage.children.filter((node): node is FrameNode => node.type === "FRAME");
 }
 
 function toIssueDto(finding: Finding, document: NormalizedDocument): IssueDto {
