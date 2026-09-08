@@ -30,6 +30,9 @@ export interface RuleDefinition {
   title: string;
   why: string;
   fixHint: string;
+  autofix?: {
+    label: string;
+  };
 }
 ```
 

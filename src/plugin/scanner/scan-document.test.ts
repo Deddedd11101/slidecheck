@@ -142,6 +142,57 @@ describe("scanDocument", () => {
     ]);
   });
 
+  it("reports layer blur but ignores hidden effects", () => {
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Effects",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+          children: [
+            {
+              id: "visible-blur",
+              name: "Blurred image",
+              type: "RECTANGLE",
+              path: ["Effects", "Blurred image"],
+              effects: [{ type: "LAYER_BLUR" }],
+            },
+            {
+              id: "hidden-blur",
+              name: "Hidden blur",
+              type: "RECTANGLE",
+              path: ["Effects", "Hidden blur"],
+              effects: [{ type: "LAYER_BLUR", visible: false }],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(scanDocument(document).map((finding) => finding.ruleId)).toEqual([
+      "visual.layer-blur",
+    ]);
+  });
+
+  it("does not report a slide at the widescreen tolerance boundary", () => {
+    const width = 1600;
+    const height = width / (16 / 9 + 0.009);
+    const document: NormalizedDocument = {
+      slides: [
+        {
+          id: "slide-1",
+          name: "Tolerance",
+          type: "FRAME",
+          bounds: { x: 0, y: 0, width, height },
+          children: [],
+        },
+      ],
+    };
+
+    expect(scanDocument(document).some((finding) => finding.ruleId === "structure.non-16-9-slide")).toBe(false);
+  });
+
   it("reports non-system fonts and text outside slide bounds", () => {
     const document: NormalizedDocument = {
       slides: [
