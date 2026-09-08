@@ -130,13 +130,16 @@ should not be pretended to be editable.
 
 ## Implementation Stages
 
-### Stage A: export probe
+### Stage A: export probe (implemented)
 
-- inspect representative Figma nodes;
 - collect text, solid fills, basic shapes, and raster image bytes;
 - generate a PPTX with one native object per supported node;
-- compare the result with the image-only export;
-- add fixture-level tests for geometry and color conversion.
+- use a whole-slide PNG fallback when unsupported content is present;
+- cover the pixel-to-inch geometry conversion with fixture-level tests.
+
+The first probe is now wired into the plugin behind `Попробовать editable PPTX`.
+Visual comparison with the source and image-only export still requires a real
+Figma file and PowerPoint-compatible viewer.
 
 Estimate: 4-6 hours.
 

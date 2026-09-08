@@ -9,11 +9,13 @@ import {
   Loader2, Circle, XCircle,
 } from "lucide-react";
 import type { IssueGroup } from "../shared/types";
+import type { ExportDocumentDto, ExportElementDto } from "../shared/export";
+import { PPTX_WIDE_HEIGHT, PPTX_WIDE_WIDTH, toPptxBox } from "../shared/export-geometry";
 import type { EnabledRuleGroups, ExportedSlideDto, FixMode, FixRunResultDto, FixTargetDto, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, UiToPluginMessage } from "../shared/messages";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type WizardStep = "source" | "scan" | "issues" | "detail" | "exporting" | "fixmode" | "applying" | "final";
+type WizardStep = "source" | "scan" | "issues" | "detail" | "exporting" | "editable-exporting" | "fixmode" | "applying" | "final";
 type Issue = IssueDto;
 
 function isFixableIssue(issue: Issue): issue is Issue & { ruleId: string; nodeId: string } {
@@ -85,13 +87,14 @@ function computeScore(issues: Issue[]): number {
   return getScoreBreakdown(issues).score;
 }
 
-const STEP_ORDER: WizardStep[] = ["source", "scan", "issues", "exporting", "fixmode", "applying", "final"];
+const STEP_ORDER: WizardStep[] = ["source", "scan", "issues", "exporting", "editable-exporting", "fixmode", "applying", "final"];
 const STEP_TITLES: Partial<Record<WizardStep, string>> = {
   source:   "Источник",
   scan:     "Сканирование",
   issues:   "Проблемы",
   detail:   "Детали",
   exporting: "Экспорт PPTX",
+  "editable-exporting": "Editable PPTX",
   fixmode:  "Режим исправления",
   applying: "Применение",
   final:    "Готово",
@@ -370,6 +373,61 @@ function ExportStep({ scope, onDone, onError, onBack }: {
   );
 }
 
+function EditableExportStep({ scope, onDone, onError, onBack }: {
+  scope: ScanScope;
+  onDone: (fileName: string) => void;
+  onError: (message: string) => void;
+  onBack: () => void;
+}) {
+  const [status, setStatus] = useState("Собираю структуру слайдов…");
+  const calledRef = useRef(false);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data?.pluginMessage as PluginToUiMessage | undefined;
+      if (!message || calledRef.current) return;
+
+      if (message.type === "EXPORT_EDITABLE_PPTX_RESULT") {
+        calledRef.current = true;
+        const fallbackCount = message.document.slides.filter(slide => slide.mode === "image-only").length;
+        setStatus(`Собираю PPTX: ${fallbackCount} слайдов с PNG fallback…`);
+        void createEditablePptxFile(message.document)
+          .then(onDone)
+          .catch(error => onError(error instanceof Error ? error.message : "Не удалось собрать editable PPTX"));
+      }
+
+      if (message.type === "EXPORT_EDITABLE_PPTX_ERROR") {
+        calledRef.current = true;
+        onError(message.message);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    if (isStandaloneBrowser()) {
+      onError("Editable экспорт доступен внутри Figma");
+    } else {
+      postToPlugin({ type: "EXPORT_EDITABLE_PPTX_REQUEST", scope });
+    }
+
+    return () => window.removeEventListener("message", handleMessage);
+  }, [onDone, onError, scope]);
+
+  return (
+    <div className="flex flex-col gap-5 px-4 py-5">
+      <div className="flex items-center gap-2.5">
+        <Loader2 className="w-5 h-5 text-lime-400 animate-spin" />
+        <span className="text-[12px] text-white/65">{status}</span>
+      </div>
+      <div className="rounded-xl border border-lime-400/15 bg-lime-400/[0.04] px-3.5 py-3">
+        <p className="text-[11px] text-white/55 leading-relaxed">
+          Простые текст и фигуры останутся редактируемыми. Слайды со сложными эффектами будут добавлены как PNG.
+        </p>
+      </div>
+      <GhostBtn onClick={onBack}>Отмена</GhostBtn>
+    </div>
+  );
+}
+
 async function createPptxFile(slides: ExportedSlideDto[]): Promise<string> {
   if (slides.length === 0) {
     throw new Error("Нет изображений для экспорта");
@@ -408,6 +466,95 @@ async function createPptxFile(slides: ExportedSlideDto[]): Promise<string> {
   return fileName;
 }
 
+async function createEditablePptxFile(document: ExportDocumentDto): Promise<string> {
+  if (document.slides.length === 0) throw new Error("Нет слайдов для экспорта");
+
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE";
+  pptx.author = "SlideCheck";
+  pptx.subject = "Editable PPTX export from SlideCheck";
+  pptx.title = "SlideCheck editable export";
+
+  for (const source of document.slides) {
+    const outputSlide = pptx.addSlide();
+    outputSlide.background = { color: "FFFFFF" };
+    if (source.mode === "image-only" && source.fallbackPng) {
+      addContainedImage(outputSlide, bytesToPngDataUrl(source.fallbackPng), source.width, source.height);
+      continue;
+    }
+
+    for (const element of source.elements) {
+      addEditableElement(outputSlide, element, source.width, source.height);
+    }
+  }
+
+  const fileName = `slidecheck-editable-${new Date().toISOString().slice(0, 10)}.pptx`;
+  await pptx.writeFile({ fileName });
+  return fileName;
+}
+
+function addContainedImage(slide: PptxGenJS.Slide, data: string, width: number, height: number): void {
+  const slideWidth = PPTX_WIDE_WIDTH;
+  const slideHeight = PPTX_WIDE_HEIGHT;
+  const sourceRatio = width / Math.max(height, 1);
+  const slideRatio = slideWidth / slideHeight;
+  const imageWidth = sourceRatio >= slideRatio ? slideWidth : slideHeight * sourceRatio;
+  const imageHeight = sourceRatio >= slideRatio ? slideWidth / sourceRatio : slideHeight;
+  slide.addImage({
+    data,
+    x: (slideWidth - imageWidth) / 2,
+    y: (slideHeight - imageHeight) / 2,
+    w: imageWidth,
+    h: imageHeight,
+  });
+}
+
+function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, slideWidth: number, slideHeight: number): void {
+  const box = toPptxBox(element, slideWidth, slideHeight);
+  const transparency = Math.round((1 - element.opacity) * 100);
+
+  if (element.kind === "text") {
+    slide.addText(element.text, {
+      ...box,
+      fontFace: element.fontFamily,
+      fontSize: Math.max(element.fontSize * 0.75, 1),
+      color: element.color,
+      bold: element.bold,
+      italic: element.italic,
+      align: element.align,
+      valign: "mid",
+      margin: 0,
+      transparency,
+      breakLine: false,
+      fit: "shrink",
+      rotate: element.rotation,
+    });
+    return;
+  }
+
+  if (element.kind === "image") {
+    slide.addImage({
+      data: bytesToPngDataUrl(element.bytes),
+      ...box,
+      transparency,
+      rotate: element.rotation,
+    });
+    return;
+  }
+
+  const shapeType = element.shape === "ellipse"
+    ? PptxGenJS.ShapeType.ellipse
+    : element.shape === "line"
+      ? PptxGenJS.ShapeType.line
+      : PptxGenJS.ShapeType.rect;
+  slide.addShape(shapeType, {
+    ...box,
+    rotate: element.rotation,
+    fill: element.fill ? { color: element.fill, transparency } : { color: "FFFFFF", transparency: 100 },
+    line: element.stroke ? { color: element.stroke, transparency } : { color: "FFFFFF", transparency: 100 },
+  });
+}
+
 function bytesToPngDataUrl(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 0x8000;
@@ -422,7 +569,7 @@ function bytesToPngDataUrl(bytes: Uint8Array): string {
 function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onRestart, onExport }: {
   issues: Issue[]; slideCount: number;
   fixableCount: number;
-  onDetail: (issue: Issue) => void; onFix: () => void; onRestart: () => void; onExport: () => void;
+  onDetail: (issue: Issue) => void; onFix: () => void; onRestart: () => void; onExport: () => void; onEditableExport: () => void;
 }) {
   const slides = groupIssuesBySlide(issues);
   const [activeSlide, setActiveSlide] = useState(slides[0]?.name ?? "");
@@ -580,10 +727,16 @@ function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onResta
           </button>
         )}
         {issues.length > 0 && (
-          <button onClick={onExport}
-            className="w-full border border-lime-400/20 hover:border-lime-400/40 hover:bg-lime-400/[0.05] text-lime-300/75 hover:text-lime-200 text-[11px] font-medium py-2.5 rounded-xl transition-colors">
-            <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Скачать PPTX как изображения</span>
-          </button>
+          <>
+            <button onClick={onExport}
+              className="w-full border border-lime-400/20 hover:border-lime-400/40 hover:bg-lime-400/[0.05] text-lime-300/75 hover:text-lime-200 text-[11px] font-medium py-2.5 rounded-xl transition-colors">
+              <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Скачать PPTX как изображения</span>
+            </button>
+            <button onClick={onEditableExport}
+              className="w-full border border-lime-400/20 hover:border-lime-300/35 hover:bg-lime-400/[0.05] text-lime-300/70 hover:text-lime-200 text-[11px] font-medium py-2 rounded-xl transition-colors">
+              <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Попробовать editable PPTX</span>
+            </button>
+          </>
         )}
         <GhostBtn onClick={onRestart}>Новая проверка</GhostBtn>
       </div>
@@ -982,11 +1135,12 @@ export default function App() {
   const fixableIssues = visibleIssues.filter(isFixableIssue);
   const scoreBefore = computeScore(visibleIssues);
   const stepIdx     = STEP_ORDER.indexOf(step === "detail" ? "issues" : step);
-  const canGoBack = ["detail", "exporting", "fixmode", "scan", "issues"].includes(step);
+  const canGoBack = ["detail", "exporting", "editable-exporting", "fixmode", "scan", "issues"].includes(step);
 
   function goBack() {
     if (step === "detail")  setStep("issues");
     if (step === "exporting") setStep("issues");
+    if (step === "editable-exporting") setStep("issues");
     if (step === "fixmode") setStep("issues");
     if (step === "scan")    setStep("source");
     if (step === "issues")  setStep("source");
@@ -1002,6 +1156,11 @@ export default function App() {
   function startExport() {
     setNotice(null);
     setStep("exporting");
+  }
+
+  function startEditableExport() {
+    setNotice(null);
+    setStep("editable-exporting");
   }
 
   function finishExport(fileName: string) {
@@ -1110,7 +1269,8 @@ export default function App() {
             onDetail={(iss) => { setDetail(iss); setStep("detail"); }}
             onFix={() => startFixes()}
             onRestart={() => setStep("source")}
-            onExport={startExport} />
+            onExport={startExport}
+            onEditableExport={startEditableExport} />
         )}
         {step === "detail" && detail && (
           <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode}
@@ -1118,6 +1278,11 @@ export default function App() {
         )}
         {step === "exporting" && (
           <ExportStep scope={scanScope} onDone={finishExport}
+            onError={(message) => { setNotice(message); setStep("issues"); }}
+            onBack={() => setStep("issues")} />
+        )}
+        {step === "editable-exporting" && (
+          <EditableExportStep scope={scanScope} onDone={finishExport}
             onError={(message) => { setNotice(message); setStep("issues"); }}
             onBack={() => setStep("issues")} />
         )}

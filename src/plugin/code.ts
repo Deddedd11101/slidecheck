@@ -1,4 +1,5 @@
 import { collectFigmaDocument } from "./adapter/collect-figma-document";
+import { collectExportDocument } from "./adapter/collect-export-document";
 import { applyFixes } from "./fixes/apply-fixes";
 import { RULES } from "./rules/registry";
 import { scanDocument } from "./scanner/scan-document";
@@ -70,6 +71,18 @@ figma.ui.onmessage = async (message: UiToPluginMessage) => {
       postToUi({
         type: "EXPORT_PPTX_ERROR",
         message: error instanceof Error ? error.message : "Unknown PPTX export error",
+      });
+    }
+  }
+
+  if (message.type === "EXPORT_EDITABLE_PPTX_REQUEST") {
+    try {
+      const document = await collectExportDocument(message.scope);
+      postToUi({ type: "EXPORT_EDITABLE_PPTX_RESULT", document });
+    } catch (error) {
+      postToUi({
+        type: "EXPORT_EDITABLE_PPTX_ERROR",
+        message: error instanceof Error ? error.message : "Unknown editable PPTX export error",
       });
     }
   }

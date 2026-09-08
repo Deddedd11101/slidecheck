@@ -1,4 +1,5 @@
 import type { IssueGroup, Severity } from "./types";
+import type { ExportDocumentDto } from "./export";
 
 export type ScanScope = "page" | "selected";
 export type FixMode = "in-place" | "copy";
@@ -51,7 +52,8 @@ export type UiToPluginMessage =
   | { type: "SCAN_REQUEST"; scope: ScanScope; settings: ScanSettings }
   | { type: "SELECT_NODE_REQUEST"; nodeId: string }
   | { type: "APPLY_FIXES_REQUEST"; scope: ScanScope; settings: ScanSettings; targets: FixTargetDto[]; mode: FixMode }
-  | { type: "EXPORT_PPTX_REQUEST"; scope: ScanScope };
+  | { type: "EXPORT_PPTX_REQUEST"; scope: ScanScope }
+  | { type: "EXPORT_EDITABLE_PPTX_REQUEST"; scope: ScanScope };
 
 export type PluginToUiMessage =
   | { type: "SCAN_RESULT"; issues: IssueDto[]; slideCount: number }
@@ -61,4 +63,6 @@ export type PluginToUiMessage =
   | { type: "APPLY_FIXES_RESULT"; result: FixRunResultDto }
   | { type: "APPLY_FIXES_ERROR"; message: string }
   | { type: "EXPORT_PPTX_RESULT"; slides: ExportedSlideDto[] }
-  | { type: "EXPORT_PPTX_ERROR"; message: string };
+  | { type: "EXPORT_PPTX_ERROR"; message: string }
+  | { type: "EXPORT_EDITABLE_PPTX_RESULT"; document: ExportDocumentDto }
+  | { type: "EXPORT_EDITABLE_PPTX_ERROR"; message: string };

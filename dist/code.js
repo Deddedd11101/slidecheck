@@ -144,6 +144,192 @@
     return "children" in node && Array.isArray(node.children);
   }
 
+  // src/plugin/adapter/collect-export-document.ts
+  var SUPPORTED_SHAPES = /* @__PURE__ */ new Set(["RECTANGLE", "ELLIPSE", "LINE"]);
+  function collectExportDocument(scope) {
+    return __async(this, null, function* () {
+      const roots = getExportRoots(scope);
+      if (roots.length === 0) {
+        throw new Error("\u041D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E \u043D\u0438 \u043E\u0434\u043D\u043E\u0433\u043E \u0444\u0440\u0435\u0439\u043C\u0430 \u0438\u043B\u0438 \u0441\u043B\u0430\u0439\u0434\u0430 \u0434\u043B\u044F \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430");
+      }
+      const slides = yield Promise.all(roots.map(collectExportSlide));
+      return { slides };
+    });
+  }
+  function collectExportSlide(root) {
+    return __async(this, null, function* () {
+      const width = root.width;
+      const height = root.height;
+      const unsupported = findUnsupportedNode(root);
+      if (unsupported) {
+        return {
+          id: root.id,
+          name: root.name,
+          width,
+          height,
+          mode: "image-only",
+          elements: [],
+          fallbackPng: yield root.exportAsync({
+            format: "PNG",
+            constraint: { type: "WIDTH", value: 1920 }
+          }),
+          fallbackReason: unsupported
+        };
+      }
+      const elements = [];
+      yield collectChildren(root, root, elements);
+      return {
+        id: root.id,
+        name: root.name,
+        width,
+        height,
+        mode: "editable",
+        elements
+      };
+    });
+  }
+  function collectChildren(root, parent, elements) {
+    return __async(this, null, function* () {
+      for (const node of parent.children) {
+        if (!node.visible) continue;
+        const element = yield collectElement(root, node);
+        if (element) elements.push(element);
+        if ("children" in node) {
+          yield collectChildren(root, node, elements);
+        }
+      }
+    });
+  }
+  function collectElement(root, node) {
+    return __async(this, null, function* () {
+      const bounds = getBounds(root, node);
+      if (!bounds || node.type === "GROUP" || node.type === "FRAME" || node.type === "SECTION") {
+        return null;
+      }
+      if (node.type === "TEXT") {
+        const style = node.fontName;
+        const fill = getSolidPaint(node.fills);
+        if (style === figma.mixed || node.fontSize === figma.mixed || !fill) return null;
+        const text = __spreadValues({
+          kind: "text",
+          id: node.id,
+          text: node.characters,
+          fontFamily: style.family,
+          fontSize: node.fontSize,
+          color: fill.color,
+          bold: style.style.toLowerCase().includes("bold"),
+          italic: style.style.toLowerCase().includes("italic"),
+          align: node.textAlignHorizontal === "CENTER" ? "center" : node.textAlignHorizontal === "RIGHT" ? "right" : "left"
+        }, bounds);
+        return text;
+      }
+      if (SUPPORTED_SHAPES.has(node.type)) {
+        const image = yield getImagePaint(node);
+        if (image) return __spreadValues({ kind: "image", id: node.id, bytes: image }, bounds);
+        const fill = getSolidPaint(node.fills);
+        const stroke = getSolidPaint(node.strokes);
+        if (!fill && !stroke) return null;
+        const shape = __spreadValues({
+          kind: "shape",
+          id: node.id,
+          shape: node.type === "ELLIPSE" ? "ellipse" : node.type === "LINE" ? "line" : "rect",
+          fill: fill == null ? void 0 : fill.color,
+          stroke: stroke == null ? void 0 : stroke.color
+        }, bounds);
+        return shape;
+      }
+      return null;
+    });
+  }
+  function findUnsupportedNode(root) {
+    const visit = (node) => {
+      if (!node.visible) return null;
+      if (node.blendMode !== "NORMAL" && node.blendMode !== "PASS_THROUGH") {
+        return `${node.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F ${node.blendMode}`;
+      }
+      if (node.effects.length > 0) return `${node.name}: \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u0438 blur`;
+      if (node.type === "TEXT") {
+        if (node.fontName === figma.mixed || node.fontSize === figma.mixed) {
+          return `${node.name}: \u0441\u043C\u0435\u0448\u0430\u043D\u043D\u044B\u0435 \u0441\u0442\u0438\u043B\u0438 \u0442\u0435\u043A\u0441\u0442\u0430`;
+        }
+        if (!getSolidPaint(node.fills)) return `${node.name}: \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u0430`;
+      } else if (SUPPORTED_SHAPES.has(node.type)) {
+        if (hasUnsupportedPaint(node.fills) || hasUnsupportedPaint(node.strokes)) {
+          return `${node.name}: \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442, \u043C\u0430\u0441\u043A\u0430 \u0438\u043B\u0438 \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430`;
+        }
+      } else if (node.type !== "GROUP" && node.type !== "FRAME" && node.type !== "SECTION") {
+        return `${node.name}: \u0442\u0438\u043F ${node.type} \u043F\u043E\u043A\u0430 \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F`;
+      }
+      if ("children" in node) {
+        for (const child of node.children) {
+          const reason = visit(child);
+          if (reason) return reason;
+        }
+      }
+      return null;
+    };
+    if ("children" in root) {
+      for (const child of root.children) {
+        const reason = visit(child);
+        if (reason) return reason;
+      }
+    }
+    return null;
+  }
+  function getBounds(root, node) {
+    const bounds = node.absoluteBoundingBox;
+    const rootBounds = root.absoluteBoundingBox;
+    if (!bounds || !rootBounds) return null;
+    return {
+      x: bounds.x - rootBounds.x,
+      y: bounds.y - rootBounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      rotation: node.rotation,
+      opacity: node.opacity
+    };
+  }
+  function hasUnsupportedPaint(paints) {
+    if (paints === figma.mixed) return true;
+    return paints.some((paint) => paint.visible !== false && paint.type !== "SOLID" && paint.type !== "IMAGE");
+  }
+  function getSolidPaint(paints) {
+    var _a;
+    if (paints === figma.mixed || paints.length === 0) return null;
+    const paint = paints.find((item) => item.visible !== false && item.type === "SOLID");
+    if (!paint || paint.type !== "SOLID") return null;
+    return {
+      color: rgbToHex(paint.color),
+      opacity: (_a = paint.opacity) != null ? _a : 1
+    };
+  }
+  function getImagePaint(node) {
+    return __async(this, null, function* () {
+      if (!("fills" in node) || node.fills === figma.mixed) return null;
+      const paint = node.fills.find((item) => item.visible !== false && item.type === "IMAGE");
+      if (!paint || paint.type !== "IMAGE") return null;
+      return node.exportAsync({ format: "PNG" });
+    });
+  }
+  function rgbToHex(color) {
+    return [color.r, color.g, color.b].map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+  function getExportRoots(scope) {
+    if (figma.editorType === "slides") {
+      if (scope === "selected") {
+        const selected = figma.currentPage.selection.filter((node) => node.type === "SLIDE");
+        if (selected.length > 0) return selected;
+        if (figma.currentPage.focusedSlide) return [figma.currentPage.focusedSlide];
+      }
+      return figma.getSlideGrid().flat();
+    }
+    if (scope === "selected") {
+      const selected = figma.currentPage.selection.filter((node) => node.type === "FRAME");
+      if (selected.length > 0) return selected;
+    }
+    return figma.currentPage.children.filter((node) => node.type === "FRAME");
+  }
+
   // src/plugin/fixes/geometry.ts
   function getDeltaToFitBounds(bounds, container, margin) {
     const maxX = container.x + container.width - margin - bounds.width;
@@ -916,6 +1102,17 @@
         });
       }
     }
+    if (message.type === "EXPORT_EDITABLE_PPTX_REQUEST") {
+      try {
+        const document = yield collectExportDocument(message.scope);
+        postToUi({ type: "EXPORT_EDITABLE_PPTX_RESULT", document });
+      } catch (error) {
+        postToUi({
+          type: "EXPORT_EDITABLE_PPTX_ERROR",
+          message: error instanceof Error ? error.message : "Unknown editable PPTX export error"
+        });
+      }
+    }
   });
   function postToUi(message) {
     figma.ui.postMessage(message);
@@ -931,7 +1128,7 @@
   }
   function exportSlidesAsPng(scope) {
     return __async(this, null, function* () {
-      const roots = getExportRoots(scope);
+      const roots = getExportRoots2(scope);
       if (roots.length === 0) {
         throw new Error("\u041D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E \u043D\u0438 \u043E\u0434\u043D\u043E\u0433\u043E \u0444\u0440\u0435\u0439\u043C\u0430 \u0438\u043B\u0438 \u0441\u043B\u0430\u0439\u0434\u0430 \u0434\u043B\u044F \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430");
       }
@@ -951,7 +1148,7 @@
       return exported;
     });
   }
-  function getExportRoots(scope) {
+  function getExportRoots2(scope) {
     if (figma.editorType === "slides") {
       if (scope === "selected") {
         const selected = figma.currentPage.selection.filter((node) => node.type === "SLIDE");
