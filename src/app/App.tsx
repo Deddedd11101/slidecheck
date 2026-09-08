@@ -524,7 +524,7 @@ function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, s
       align: element.align,
       valign: "mid",
       margin: 0,
-      transparency,
+      transparency: Math.min(100, Math.round(100 - element.opacity * element.colorOpacity * 100)),
       breakLine: false,
       fit: "shrink",
       rotate: element.rotation,
@@ -550,8 +550,12 @@ function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, s
   slide.addShape(shapeType, {
     ...box,
     rotate: element.rotation,
-    fill: element.fill ? { color: element.fill, transparency } : { color: "FFFFFF", transparency: 100 },
-    line: element.stroke ? { color: element.stroke, transparency } : { color: "FFFFFF", transparency: 100 },
+    fill: element.fill
+      ? { color: element.fill.color, transparency: Math.min(100, Math.round(100 - element.opacity * element.fill.opacity * 100)) }
+      : { color: "FFFFFF", transparency: 100 },
+    line: element.stroke
+      ? { color: element.stroke.color, transparency: Math.min(100, Math.round(100 - element.opacity * element.stroke.opacity * 100)) }
+      : { color: "FFFFFF", transparency: 100 },
   });
 }
 
@@ -726,18 +730,14 @@ function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onResta
             {fixableCount > 0 ? `Исправить доступные проблемы: ${fixableCount}` : "Для этих проблем пока нет автофиксов"}
           </button>
         )}
-        {issues.length > 0 && (
-          <>
-            <button onClick={onExport}
-              className="w-full border border-lime-400/20 hover:border-lime-400/40 hover:bg-lime-400/[0.05] text-lime-300/75 hover:text-lime-200 text-[11px] font-medium py-2.5 rounded-xl transition-colors">
-              <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Скачать PPTX как изображения</span>
-            </button>
-            <button onClick={onEditableExport}
-              className="w-full border border-lime-400/20 hover:border-lime-300/35 hover:bg-lime-400/[0.05] text-lime-300/70 hover:text-lime-200 text-[11px] font-medium py-2 rounded-xl transition-colors">
-              <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Попробовать editable PPTX</span>
-            </button>
-          </>
-        )}
+        <button onClick={onExport}
+          className="w-full border border-lime-400/20 hover:border-lime-400/40 hover:bg-lime-400/[0.05] text-lime-300/75 hover:text-lime-200 text-[11px] font-medium py-2.5 rounded-xl transition-colors">
+          <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Скачать PPTX как изображения</span>
+        </button>
+        <button onClick={onEditableExport}
+          className="w-full border border-lime-400/20 hover:border-lime-300/35 hover:bg-lime-400/[0.05] text-lime-300/70 hover:text-lime-200 text-[11px] font-medium py-2 rounded-xl transition-colors">
+          <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Попробовать editable PPTX</span>
+        </button>
         <GhostBtn onClick={onRestart}>Новая проверка</GhostBtn>
       </div>
     </div>

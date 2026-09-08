@@ -2,6 +2,7 @@ import type {
   ExportDocumentDto,
   ExportElementDto,
   ExportImageDto,
+  ExportPaintDto,
   ExportShapeDto,
   ExportSlideDto,
   ExportTextDto,
@@ -42,6 +43,8 @@ async function collectExportSlide(root: FrameNode | SlideNode): Promise<ExportSl
   }
 
   const elements: ExportElementDto[] = [];
+  const background = getContainerBackground(root, root);
+  if (background) elements.push(background);
   await collectChildren(root, root, elements);
 
   return {
@@ -92,6 +95,7 @@ async function collectElement(
       fontFamily: style.family,
       fontSize: node.fontSize,
       color: fill.color,
+      colorOpacity: fill.opacity,
       bold: style.style.toLowerCase().includes("bold"),
       italic: style.style.toLowerCase().includes("italic"),
       align: node.textAlignHorizontal === "CENTER"
@@ -116,8 +120,8 @@ async function collectElement(
       kind: "shape",
       id: node.id,
       shape: node.type === "ELLIPSE" ? "ellipse" : node.type === "LINE" ? "line" : "rect",
-      fill: fill?.color,
-      stroke: stroke?.color,
+      fill: fill ?? undefined,
+      stroke: stroke ?? undefined,
       ...bounds,
     };
     return shape;
@@ -127,25 +131,15 @@ async function collectElement(
 }
 
 function findUnsupportedNode(root: FrameNode | SlideNode): string | null {
+  if (root.type === "FRAME") {
+    const rootReason = findUnsupportedVisual(root);
+    if (rootReason) return rootReason;
+  }
+
   const visit = (node: SceneNode): string | null => {
     if (!node.visible) return null;
-    if (node.blendMode !== "NORMAL" && node.blendMode !== "PASS_THROUGH") {
-      return `${node.name}: режим наложения ${node.blendMode}`;
-    }
-    if (node.effects.length > 0) return `${node.name}: эффекты и blur`;
-
-    if (node.type === "TEXT") {
-      if (node.fontName === figma.mixed || node.fontSize === figma.mixed) {
-        return `${node.name}: смешанные стили текста`;
-      }
-      if (!getSolidPaint(node.fills)) return `${node.name}: сложная заливка текста`;
-    } else if (SUPPORTED_SHAPES.has(node.type)) {
-      if (hasUnsupportedPaint(node.fills) || hasUnsupportedPaint(node.strokes)) {
-        return `${node.name}: градиент, маска или сложная заливка`;
-      }
-    } else if (node.type !== "GROUP" && node.type !== "FRAME" && node.type !== "SECTION") {
-      return `${node.name}: тип ${node.type} пока не поддерживается`;
-    }
+    const visualReason = findUnsupportedVisual(node);
+    if (visualReason) return visualReason;
 
     if ("children" in node) {
       for (const child of node.children) {
@@ -163,6 +157,46 @@ function findUnsupportedNode(root: FrameNode | SlideNode): string | null {
     }
   }
   return null;
+}
+
+function findUnsupportedVisual(node: SceneNode): string | null {
+  if (node.blendMode !== "NORMAL" && node.blendMode !== "PASS_THROUGH") {
+    return `${node.name}: режим наложения ${node.blendMode}`;
+  }
+  if (node.effects.length > 0) return `${node.name}: эффекты и blur`;
+
+  if (node.type === "TEXT") {
+    if (node.fontName === figma.mixed || node.fontSize === figma.mixed) {
+      return `${node.name}: смешанные стили текста`;
+    }
+    if (!getSolidPaint(node.fills)) return `${node.name}: сложная заливка текста`;
+  } else if (SUPPORTED_SHAPES.has(node.type)) {
+    if (hasUnsupportedPaint(node.fills) || hasUnsupportedPaint(node.strokes)) {
+      return `${node.name}: градиент, маска или сложная заливка`;
+    }
+  } else if (node.type === "FRAME") {
+    if (hasUnsupportedPaint(node.fills) || hasUnsupportedPaint(node.strokes)) {
+      return `${node.name}: сложный фон или заливка фрейма`;
+    }
+  } else if (node.type !== "GROUP" && node.type !== "SECTION") {
+    return `${node.name}: тип ${node.type} пока не поддерживается`;
+  }
+  return null;
+}
+
+function getContainerBackground(root: FrameNode | SlideNode, node: FrameNode | SlideNode): ExportShapeDto | null {
+  if (node.type !== "FRAME") return null;
+  const fill = getSolidPaint(node.fills);
+  if (!fill) return null;
+  const bounds = getBounds(root, node);
+  if (!bounds) return null;
+  return {
+    kind: "shape",
+    id: node.id,
+    shape: "rect",
+    fill,
+    ...bounds,
+  };
 }
 
 function getBounds(root: FrameNode | SlideNode, node: SceneNode) {

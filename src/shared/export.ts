@@ -33,6 +33,7 @@ export interface ExportTextDto extends ExportBoundsDto {
   fontFamily: string;
   fontSize: number;
   color: string;
+  colorOpacity: number;
   bold: boolean;
   italic: boolean;
   align: "left" | "center" | "right";
@@ -42,8 +43,13 @@ export interface ExportShapeDto extends ExportBoundsDto {
   kind: "shape";
   id: string;
   shape: "rect" | "ellipse" | "line";
-  fill?: string;
-  stroke?: string;
+  fill?: ExportPaintDto;
+  stroke?: ExportPaintDto;
+}
+
+export interface ExportPaintDto {
+  color: string;
+  opacity: number;
 }
 
 export interface ExportImageDto extends ExportBoundsDto {

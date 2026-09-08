@@ -177,6 +177,8 @@
         };
       }
       const elements = [];
+      const background = getContainerBackground(root, root);
+      if (background) elements.push(background);
       yield collectChildren(root, root, elements);
       return {
         id: root.id,
@@ -217,6 +219,7 @@
           fontFamily: style.family,
           fontSize: node.fontSize,
           color: fill.color,
+          colorOpacity: fill.opacity,
           bold: style.style.toLowerCase().includes("bold"),
           italic: style.style.toLowerCase().includes("italic"),
           align: node.textAlignHorizontal === "CENTER" ? "center" : node.textAlignHorizontal === "RIGHT" ? "right" : "left"
@@ -233,8 +236,8 @@
           kind: "shape",
           id: node.id,
           shape: node.type === "ELLIPSE" ? "ellipse" : node.type === "LINE" ? "line" : "rect",
-          fill: fill == null ? void 0 : fill.color,
-          stroke: stroke == null ? void 0 : stroke.color
+          fill: fill != null ? fill : void 0,
+          stroke: stroke != null ? stroke : void 0
         }, bounds);
         return shape;
       }
@@ -242,24 +245,14 @@
     });
   }
   function findUnsupportedNode(root) {
+    if (root.type === "FRAME") {
+      const rootReason = findUnsupportedVisual(root);
+      if (rootReason) return rootReason;
+    }
     const visit = (node) => {
       if (!node.visible) return null;
-      if (node.blendMode !== "NORMAL" && node.blendMode !== "PASS_THROUGH") {
-        return `${node.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F ${node.blendMode}`;
-      }
-      if (node.effects.length > 0) return `${node.name}: \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u0438 blur`;
-      if (node.type === "TEXT") {
-        if (node.fontName === figma.mixed || node.fontSize === figma.mixed) {
-          return `${node.name}: \u0441\u043C\u0435\u0448\u0430\u043D\u043D\u044B\u0435 \u0441\u0442\u0438\u043B\u0438 \u0442\u0435\u043A\u0441\u0442\u0430`;
-        }
-        if (!getSolidPaint(node.fills)) return `${node.name}: \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u0430`;
-      } else if (SUPPORTED_SHAPES.has(node.type)) {
-        if (hasUnsupportedPaint(node.fills) || hasUnsupportedPaint(node.strokes)) {
-          return `${node.name}: \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442, \u043C\u0430\u0441\u043A\u0430 \u0438\u043B\u0438 \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430`;
-        }
-      } else if (node.type !== "GROUP" && node.type !== "FRAME" && node.type !== "SECTION") {
-        return `${node.name}: \u0442\u0438\u043F ${node.type} \u043F\u043E\u043A\u0430 \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F`;
-      }
+      const visualReason = findUnsupportedVisual(node);
+      if (visualReason) return visualReason;
       if ("children" in node) {
         for (const child of node.children) {
           const reason = visit(child);
@@ -275,6 +268,42 @@
       }
     }
     return null;
+  }
+  function findUnsupportedVisual(node) {
+    if (node.blendMode !== "NORMAL" && node.blendMode !== "PASS_THROUGH") {
+      return `${node.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F ${node.blendMode}`;
+    }
+    if (node.effects.length > 0) return `${node.name}: \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u0438 blur`;
+    if (node.type === "TEXT") {
+      if (node.fontName === figma.mixed || node.fontSize === figma.mixed) {
+        return `${node.name}: \u0441\u043C\u0435\u0448\u0430\u043D\u043D\u044B\u0435 \u0441\u0442\u0438\u043B\u0438 \u0442\u0435\u043A\u0441\u0442\u0430`;
+      }
+      if (!getSolidPaint(node.fills)) return `${node.name}: \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u0430`;
+    } else if (SUPPORTED_SHAPES.has(node.type)) {
+      if (hasUnsupportedPaint(node.fills) || hasUnsupportedPaint(node.strokes)) {
+        return `${node.name}: \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442, \u043C\u0430\u0441\u043A\u0430 \u0438\u043B\u0438 \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430`;
+      }
+    } else if (node.type === "FRAME") {
+      if (hasUnsupportedPaint(node.fills) || hasUnsupportedPaint(node.strokes)) {
+        return `${node.name}: \u0441\u043B\u043E\u0436\u043D\u044B\u0439 \u0444\u043E\u043D \u0438\u043B\u0438 \u0437\u0430\u043B\u0438\u0432\u043A\u0430 \u0444\u0440\u0435\u0439\u043C\u0430`;
+      }
+    } else if (node.type !== "GROUP" && node.type !== "SECTION") {
+      return `${node.name}: \u0442\u0438\u043F ${node.type} \u043F\u043E\u043A\u0430 \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F`;
+    }
+    return null;
+  }
+  function getContainerBackground(root, node) {
+    if (node.type !== "FRAME") return null;
+    const fill = getSolidPaint(node.fills);
+    if (!fill) return null;
+    const bounds = getBounds(root, node);
+    if (!bounds) return null;
+    return __spreadValues({
+      kind: "shape",
+      id: node.id,
+      shape: "rect",
+      fill
+    }, bounds);
   }
   function getBounds(root, node) {
     const bounds = node.absoluteBoundingBox;
