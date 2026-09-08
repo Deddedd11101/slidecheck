@@ -26,10 +26,14 @@ export async function applyFixes(targets: FixTargetDto[], mode: FixMode): Promis
     }
     seen.add(dedupeKey);
 
-    const fixed = await applyFix(target);
-    if (fixed) {
-      applied += 1;
-    } else {
+    try {
+      const fixed = await applyFix(target);
+      if (fixed) {
+        applied += 1;
+      } else {
+        skipped += 1;
+      }
+    } catch {
       skipped += 1;
     }
   }
@@ -180,7 +184,7 @@ async function replaceGradientsWithSolidFills(node: SceneNode): Promise<boolean>
       return paint;
     }
 
-    const color = paint.gradientStops[0].color;
+    const color = getGradientMidpointColor(paint.gradientStops);
     changed = true;
     return {
       type: "SOLID" as const,
@@ -197,6 +201,36 @@ async function replaceGradientsWithSolidFills(node: SceneNode): Promise<boolean>
 
   await node.setFillsAsync(fills);
   return true;
+}
+
+function getGradientMidpointColor(stops: ReadonlyArray<ColorStop>): RGBA {
+  if (stops.length === 1) {
+    return stops[0].color;
+  }
+
+  const ordered = [...stops].sort((left, right) => left.position - right.position);
+  const midpoint = 0.5;
+  const rightIndex = ordered.findIndex(stop => stop.position >= midpoint);
+
+  if (rightIndex <= 0) {
+    return ordered[0].color;
+  }
+
+  if (rightIndex === -1) {
+    return ordered[ordered.length - 1].color;
+  }
+
+  const left = ordered[rightIndex - 1];
+  const right = ordered[rightIndex];
+  const span = Math.max(right.position - left.position, Number.EPSILON);
+  const ratio = (midpoint - left.position) / span;
+
+  return {
+    r: left.color.r + (right.color.r - left.color.r) * ratio,
+    g: left.color.g + (right.color.g - left.color.g) * ratio,
+    b: left.color.b + (right.color.b - left.color.b) * ratio,
+    a: left.color.a + (right.color.a - left.color.a) * ratio,
+  };
 }
 
 function removeEffects(node: SceneNode, shouldRemove: (effect: Effect) => boolean): boolean {
@@ -308,7 +342,7 @@ function replacePlainFrameWithGroup(node: SceneNode): boolean {
 }
 
 function moveNodeInsideSlide(node: SceneNode, margin: number): boolean {
-  if (!canMove(node) || !("absoluteBoundingBox" in node) || !node.absoluteBoundingBox) {
+  if (!canMove(node) || isPositionControlledByAutoLayout(node) || !("absoluteBoundingBox" in node) || !node.absoluteBoundingBox) {
     return false;
   }
 
@@ -325,6 +359,11 @@ function moveNodeInsideSlide(node: SceneNode, margin: number): boolean {
   node.x += delta.x;
   node.y += delta.y;
   return true;
+}
+
+function isPositionControlledByAutoLayout(node: SceneNode): boolean {
+  const parent = node.parent;
+  return Boolean(parent && "layoutMode" in parent && parent.layoutMode !== "NONE");
 }
 
 function findSlideRoot(node: BaseNode): SceneNode | null {

@@ -178,10 +178,14 @@
           continue;
         }
         seen.add(dedupeKey);
-        const fixed = yield applyFix(target);
-        if (fixed) {
-          applied += 1;
-        } else {
+        try {
+          const fixed = yield applyFix(target);
+          if (fixed) {
+            applied += 1;
+          } else {
+            skipped += 1;
+          }
+        } catch (e) {
           skipped += 1;
         }
       }
@@ -310,7 +314,7 @@
         if (!paint.type.startsWith("GRADIENT_") || !("gradientStops" in paint) || paint.gradientStops.length === 0) {
           return paint;
         }
-        const color = paint.gradientStops[0].color;
+        const color = getGradientMidpointColor(paint.gradientStops);
         changed = true;
         return {
           type: "SOLID",
@@ -326,6 +330,30 @@
       yield node.setFillsAsync(fills);
       return true;
     });
+  }
+  function getGradientMidpointColor(stops) {
+    if (stops.length === 1) {
+      return stops[0].color;
+    }
+    const ordered = [...stops].sort((left2, right2) => left2.position - right2.position);
+    const midpoint = 0.5;
+    const rightIndex = ordered.findIndex((stop) => stop.position >= midpoint);
+    if (rightIndex <= 0) {
+      return ordered[0].color;
+    }
+    if (rightIndex === -1) {
+      return ordered[ordered.length - 1].color;
+    }
+    const left = ordered[rightIndex - 1];
+    const right = ordered[rightIndex];
+    const span = Math.max(right.position - left.position, Number.EPSILON);
+    const ratio = (midpoint - left.position) / span;
+    return {
+      r: left.color.r + (right.color.r - left.color.r) * ratio,
+      g: left.color.g + (right.color.g - left.color.g) * ratio,
+      b: left.color.b + (right.color.b - left.color.b) * ratio,
+      a: left.color.a + (right.color.a - left.color.a) * ratio
+    };
   }
   function removeEffects(node, shouldRemove) {
     if (!("effects" in node)) {
@@ -418,7 +446,7 @@
     return true;
   }
   function moveNodeInsideSlide(node, margin) {
-    if (!canMove(node) || !("absoluteBoundingBox" in node) || !node.absoluteBoundingBox) {
+    if (!canMove(node) || isPositionControlledByAutoLayout(node) || !("absoluteBoundingBox" in node) || !node.absoluteBoundingBox) {
       return false;
     }
     const slide = findSlideRoot(node);
@@ -432,6 +460,10 @@
     node.x += delta.x;
     node.y += delta.y;
     return true;
+  }
+  function isPositionControlledByAutoLayout(node) {
+    const parent = node.parent;
+    return Boolean(parent && "layoutMode" in parent && parent.layoutMode !== "NONE");
   }
   function findSlideRoot(node) {
     let current = node;
@@ -466,7 +498,7 @@
       title: "\u0413\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043C\u043E\u0436\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C\u0441\u044F \u0432 PPTX",
       why: "\u0413\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u043D\u044B\u0435 \u0437\u0430\u043B\u0438\u0432\u043A\u0438 \u043C\u043E\u0433\u0443\u0442 \u0443\u043F\u0440\u043E\u0441\u0442\u0438\u0442\u044C\u0441\u044F, \u0438\u0441\u043A\u0430\u0437\u0438\u0442\u044C\u0441\u044F \u0438\u043B\u0438 \u043F\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u0442\u044C\u0441\u044F \u0432 \u0441\u043F\u043B\u043E\u0448\u043D\u043E\u0439 \u0446\u0432\u0435\u0442 \u043F\u0440\u0438 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0435 \u0432 PowerPoint.",
       fixHint: "\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043D\u0430 \u0441\u043F\u043B\u043E\u0448\u043D\u043E\u0439 \u0446\u0432\u0435\u0442 \u0438\u043B\u0438 \u0440\u0430\u0441\u0442\u0435\u0440\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u044A\u0435\u043A\u0442 \u043F\u0435\u0440\u0435\u0434 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u043E\u043C.",
-      autofix: { label: "\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043D\u0430 \u0441\u043F\u043B\u043E\u0448\u043D\u043E\u0439 \u0446\u0432\u0435\u0442" }
+      autofix: { label: "\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u043D\u0430 \u0446\u0432\u0435\u0442 \u0438\u0437 \u0446\u0435\u043D\u0442\u0440\u0430" }
     },
     "visual.mask": {
       id: "visual.mask",

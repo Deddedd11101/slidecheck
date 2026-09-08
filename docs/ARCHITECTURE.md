@@ -91,7 +91,7 @@ and the plugin fix engine implements the matching `ruleId`.
 
 Current supported autofixes:
 
-- `visual.gradient-fill`: replace a gradient with its first color as a solid fill;
+- `visual.gradient-fill`: replace a gradient with its interpolated midpoint color as a solid fill;
 - `visual.background-blur`: remove background blur effects;
 - `visual.layer-blur`: remove layer blur effects;
 - `visual.multiple-shadows`: keep the first visible shadow;
@@ -108,6 +108,8 @@ Current limitations:
 - fixes mutate the current Figma document and rely on Figma Undo for rollback;
 - the user can choose to apply fixes in place or clone the affected root
   frames/slides first; copy mode rescans the created copies;
+- position fixes skip children controlled by Auto Layout instead of forcing
+  manual coordinates;
 - mask fixes remain manual; nested-frame fixes apply only to plain non-auto-layout
   frames without fills, strokes, effects, or clipping;
 - copy mode currently clones affected root frames/slides, not the entire page;
