@@ -31,8 +31,10 @@
 ## Phase 4: Export Experiment
 
 - image-based PPTX generation is implemented for selected/page roots;
-- evaluate editable PPTX generation feasibility;
-- decide whether export belongs in this plugin or a separate package.
+- document editable PPTX constraints and support matrix;
+- prototype hybrid editable export for clean slides;
+- keep image-only fallback for unsupported slides;
+- decide whether advanced export belongs in this plugin or a separate package.
 
 ## Phase 5: Autofix
 

@@ -69,6 +69,20 @@ UI export button
   -> browser downloads the file
 ```
 
+The editable export path is deliberately separate from the scanner path:
+
+```txt
+UI export button
+  -> EXPORT_EDITABLE_PPTX_REQUEST
+  -> plugin collects an export-specific intermediate model
+  -> unsupported slides receive an image fallback
+  -> EXPORT_EDITABLE_PPTX_RESULT
+  -> UI maps supported objects through pptxgenjs
+  -> browser downloads a hybrid PPTX
+```
+
+See `docs/EDITABLE_PPTX_SPIKE.md` for the support matrix and rollout stages.
+
 ## Rule Design
 
 Rules have metadata and checker logic.
