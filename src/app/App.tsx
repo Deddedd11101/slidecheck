@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import type { IssueGroup } from "../shared/types";
 import type { ExportDocumentDto, ExportElementDto } from "../shared/export";
-import { PPTX_WIDE_HEIGHT, PPTX_WIDE_WIDTH, toPptxBox } from "../shared/export-geometry";
+import { PPTX_WIDE_HEIGHT, PPTX_WIDE_WIDTH, toPptxBox, toPptxFontSize, toPptxInches, toPptxPoints, toPptxRotation } from "../shared/export-geometry";
 import type { EnabledRuleGroups, ExportedSlideDto, FixMode, FixRunResultDto, FixTargetDto, IssueDto, PluginToUiMessage, ScanScope, ScanSettings, UiToPluginMessage } from "../shared/messages";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -390,7 +390,13 @@ function EditableExportStep({ scope, onDone, onError, onBack }: {
       if (message.type === "EXPORT_EDITABLE_PPTX_RESULT") {
         calledRef.current = true;
         const fallbackCount = message.document.slides.filter(slide => slide.mode === "image-only").length;
-        setStatus(`Собираю PPTX: ${fallbackCount} слайдов с PNG fallback…`);
+        const rasterCount = message.document.slides
+          .reduce((total, slide) => total + slide.elements.filter(element => element.kind === "image").length, 0);
+        setStatus(
+          fallbackCount > 0
+            ? `Собираю PPTX: ${fallbackCount} слайдов целиком в PNG, ${rasterCount} слоёв растеризовано…`
+            : `Собираю PPTX: ${rasterCount} слоёв растеризовано, остальное редактируемое…`,
+        );
         void createEditablePptxFile(message.document)
           .then(onDone)
           .catch(error => onError(error instanceof Error ? error.message : "Не удалось собрать editable PPTX"));
@@ -511,23 +517,24 @@ function addContainedImage(slide: PptxGenJS.Slide, data: string, width: number, 
 
 function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, slideWidth: number, slideHeight: number): void {
   const box = toPptxBox(element, slideWidth, slideHeight);
-  const transparency = Math.round((1 - element.opacity) * 100);
+  const rotate = toPptxRotation(element.rotation);
+  const transparency = toTransparency(element.opacity);
 
   if (element.kind === "text") {
     slide.addText(element.text, {
       ...box,
       fontFace: element.fontFamily,
-      fontSize: Math.max(element.fontSize * 0.75, 1),
+      fontSize: toPptxFontSize(element.fontSize, slideWidth),
       color: element.color,
       bold: element.bold,
       italic: element.italic,
       align: element.align,
-      valign: "mid",
+      valign: "top",
       margin: 0,
-      transparency: Math.min(100, Math.round(100 - element.opacity * element.colorOpacity * 100)),
+      transparency: toTransparency(element.opacity * element.colorOpacity),
       breakLine: false,
       fit: "shrink",
-      rotate: element.rotation,
+      rotate,
     });
     return;
   }
@@ -537,26 +544,41 @@ function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, s
       data: bytesToPngDataUrl(element.bytes),
       ...box,
       transparency,
-      rotate: element.rotation,
+      rotate,
     });
     return;
   }
 
+  const isRounded = element.shape === "rect" && (element.cornerRadius ?? 0) > 0;
   const shapeType = element.shape === "ellipse"
     ? PptxGenJS.ShapeType.ellipse
     : element.shape === "line"
       ? PptxGenJS.ShapeType.line
-      : PptxGenJS.ShapeType.rect;
+      : isRounded
+        ? PptxGenJS.ShapeType.roundRect
+        : PptxGenJS.ShapeType.rect;
+
   slide.addShape(shapeType, {
     ...box,
-    rotate: element.rotation,
+    rotate,
+    ...(isRounded ? { rectRadius: toPptxInches(element.cornerRadius ?? 0, slideWidth) } : {}),
     fill: element.fill
-      ? { color: element.fill.color, transparency: Math.min(100, Math.round(100 - element.opacity * element.fill.opacity * 100)) }
+      ? { color: element.fill.color, transparency: toTransparency(element.opacity * element.fill.opacity) }
       : { color: "FFFFFF", transparency: 100 },
-    line: element.stroke
-      ? { color: element.stroke.color, transparency: Math.min(100, Math.round(100 - element.opacity * element.stroke.opacity * 100)) }
-      : { color: "FFFFFF", transparency: 100 },
+    ...(element.stroke
+      ? {
+        line: {
+          color: element.stroke.color,
+          width: toPptxPoints(element.strokeWidth ?? 1, slideWidth),
+          transparency: toTransparency(element.opacity * element.stroke.opacity),
+        },
+      }
+      : {}),
   });
+}
+
+function toTransparency(visibility: number): number {
+  return Math.min(100, Math.max(0, Math.round(100 - visibility * 100)));
 }
 
 function bytesToPngDataUrl(bytes: Uint8Array): string {

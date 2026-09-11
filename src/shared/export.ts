@@ -13,6 +13,8 @@ export interface ExportSlideDto {
   elements: ExportElementDto[];
   fallbackPng?: Uint8Array;
   fallbackReason?: string;
+  /** Почему отдельные слои пришлось растеризовать, для отчёта в UI. */
+  rasterReasons?: string[];
 }
 
 export type ExportElementDto = ExportTextDto | ExportShapeDto | ExportImageDto;
@@ -45,6 +47,10 @@ export interface ExportShapeDto extends ExportBoundsDto {
   shape: "rect" | "ellipse" | "line";
   fill?: ExportPaintDto;
   stroke?: ExportPaintDto;
+  /** Толщина обводки в пикселях макета. */
+  strokeWidth?: number;
+  /** Радиус скругления в пикселях макета. */
+  cornerRadius?: number;
 }
 
 export interface ExportPaintDto {
