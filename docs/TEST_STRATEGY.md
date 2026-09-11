@@ -22,9 +22,22 @@ Autofix geometry helpers are also unit-tested outside the Figma runtime. The
 plugin-side mutation code stays thin and delegates position math to pure helpers
 where possible.
 
-2. Adapter tests
+2. Adapter and fix tests
 
-Validate that mocked Figma node-like objects normalize into our internal model correctly.
+`src/plugin/testing/figma-mock.ts` implements the slice of the Figma Plugin API
+the plugin actually touches: a scene graph of frames/slides, absolute
+coordinates, paints, effects, blend modes, cloning, grouping, and raster export.
+
+`installMockFigma()` installs the global `figma` object, so `applyFixes()` and
+`collectExportDocument()` run unchanged outside Figma:
+
+```txt
+installMockFigma(scene) -> applyFixes(targets, mode) -> assert on the scene
+installMockFigma(scene) -> collectExportDocument(scope) -> assert on the DTO
+```
+
+Every test that installs the mock must call `uninstallMockFigma()` afterwards —
+the global is shared.
 
 3. UI tests with mocked transport
 

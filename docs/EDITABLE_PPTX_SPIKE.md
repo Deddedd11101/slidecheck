@@ -188,3 +188,55 @@ The prototype is successful when:
 The recommended default is per-slide hybrid export with an explicit fallback,
 because a hard error makes the tool less useful and silent conversion makes it
 untrustworthy.
+
+## Implemented Behavior (2026-09)
+
+The first prototype dropped an entire slide to PNG as soon as any node carried
+an effect, a blend mode, or an unsupported node type. On real decks that is
+almost every slide — an icon or a single drop shadow was enough — so the
+"editable" mode never actually produced editable output.
+
+The fallback is now per element, and only two things still force a whole slide
+to PNG:
+
+- a blend mode anywhere on the slide (the result depends on the backdrop, so a
+  rasterized layer would blend against the wrong pixels);
+- a gradient or image fill on the slide root itself (there is no separate layer
+  to rasterize the background into).
+
+Everything else degrades locally:
+
+| Case | Result |
+| --- | --- |
+| Text with a single style and solid fill | native PPTX text |
+| `RECTANGLE` / `ELLIPSE` / `LINE`, solid fill or stroke | native PPTX shape, with corner radius and stroke width |
+| Frame / component background with a solid fill | native PPTX rectangle |
+| Vector, icon, boolean op, star, polygon | that node alone rasterized at 2x |
+| Any node with effects (blur, shadow) | that node alone rasterized at 2x |
+| Group with a mask, clipped frame with overflow, group opacity | that container rasterized at 2x |
+| Image fill | that node alone rasterized at 2x |
+
+Rasterized layers keep their own coordinates inside the slide. The PNG already
+contains the rotation, opacity, and effects, so it is placed without further
+transforms.
+
+Each slide reports `rasterReasons` so the UI can say how much of the deck
+stayed editable.
+
+### Units
+
+The PPTX canvas is always 13.333in / 960pt wide, so every px→pt conversion has
+to be derived from the source slide width: `pt = px * 960 / slideWidth`. A
+fixed multiplier (the prototype used `* 0.75`) is only correct for 1280px
+layouts and makes text 1.5x too large on a 1920px deck.
+
+Figma rotation is counter-clockwise, OOXML rotation is clockwise, so the sign
+is inverted on export. Rotated objects are written with their unrotated size
+centered on the AABB, because PowerPoint rotates a shape around the center of
+the box it is given.
+
+### Known gaps
+
+- Line height, letter spacing, and per-character styling are lost on native text.
+- Auto-layout, components, and prototype links are flattened to plain objects.
+- A deck with many rasterized layers produces a large PPTX; 2x is a compromise.
