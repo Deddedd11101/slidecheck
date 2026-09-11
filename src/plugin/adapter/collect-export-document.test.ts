@@ -246,4 +246,22 @@ describe("collectExportDocument / поэлементная растеризац�
     expect(photo.exportCalls[0]).toMatchObject({ constraint: { type: "SCALE", value: 2 } });
     uninstallMockFigma();
   });
+
+  it("срезает множитель растеризации для очень крупных слоёв", async () => {
+    const figma = installMockFigma([frame([{
+      type: "VECTOR",
+      name: "Huge",
+      x: 0,
+      y: 0,
+      width: 7680,
+      height: 1080,
+      fills: [SOLID_BLACK],
+    }], { width: 7680, height: 4320 })]);
+    const vector = figma.page.children[0].children[0];
+
+    await collectExportDocument("page");
+
+    expect(vector.exportCalls[0]).toMatchObject({ constraint: { type: "SCALE", value: 1 } });
+    uninstallMockFigma();
+  });
 });

@@ -14,6 +14,8 @@ const CONTAINER_TYPES = new Set(["FRAME", "GROUP", "SECTION", "COMPONENT", "COMP
 
 /** Множитель растеризации отдельных слоёв: 2x хватает для проекторов и печати. */
 const RASTER_SCALE = 2;
+/** Потолок по длинной стороне PNG, чтобы фон во весь слайд не раздувал файл. */
+const RASTER_MAX_SIDE = 3840;
 
 interface SlideContext {
   root: FrameNode | SlideNode;
@@ -229,7 +231,7 @@ async function rasterize(root: FrameNode | SlideNode, node: SceneNode): Promise<
 
   const bytes = await node.exportAsync({
     format: "PNG",
-    constraint: { type: "SCALE", value: RASTER_SCALE },
+    constraint: { type: "SCALE", value: getRasterScale(bounds.width, bounds.height) },
   });
 
   return {
@@ -243,6 +245,11 @@ async function rasterize(root: FrameNode | SlideNode, node: SceneNode): Promise<
     rotation: 0,
     opacity: 1,
   };
+}
+
+function getRasterScale(width: number, height: number): number {
+  const longestSide = Math.max(width, height, 1);
+  return Math.min(RASTER_SCALE, Math.max(1, RASTER_MAX_SIDE / longestSide));
 }
 
 function getContainerBackground(context: SlideContext, node: SceneNode): ExportShapeDto | null {
