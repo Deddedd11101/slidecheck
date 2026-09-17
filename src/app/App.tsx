@@ -375,7 +375,7 @@ function ExportStep({ scope, onDone, onError, onBack }: {
 
 function EditableExportStep({ scope, onDone, onError, onBack }: {
   scope: ScanScope;
-  onDone: (fileName: string) => void;
+  onDone: (fileName: string, report: string) => void;
   onError: (message: string) => void;
   onBack: () => void;
 }) {
@@ -397,8 +397,9 @@ function EditableExportStep({ scope, onDone, onError, onBack }: {
             ? `Собираю PPTX: ${fallbackCount} слайдов целиком в PNG, ${rasterCount} слоёв растеризовано…`
             : `Собираю PPTX: ${rasterCount} слоёв растеризовано, остальное редактируемое…`,
         );
+        const report = describeExportDocument(message.document);
         void createEditablePptxFile(message.document)
-          .then(onDone)
+          .then(fileName => onDone(fileName, report))
           .catch(error => onError(error instanceof Error ? error.message : "Не удалось собрать editable PPTX"));
       }
 
@@ -579,6 +580,19 @@ function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, s
 
 function toTransparency(visibility: number): number {
   return Math.min(100, Math.max(0, Math.round(100 - visibility * 100)));
+}
+
+/** Построчный отчёт по слайдам: что ушло в PNG целиком и почему, что растеризовано поэлементно. */
+function describeExportDocument(document: ExportDocumentDto): string {
+  return document.slides.map(slide => {
+    if (slide.mode === "image-only") {
+      return `${slide.name} — целиком PNG: ${slide.fallbackReason ?? "причина не указана"}`;
+    }
+    const images = slide.elements.filter(element => element.kind === "image").length;
+    const native = slide.elements.length - images;
+    const reasons = slide.rasterReasons?.length ? ` (${slide.rasterReasons.join("; ")})` : "";
+    return `${slide.name} — редактируемый: ${native} нативных, ${images} растр${reasons}`;
+  }).join("\n");
 }
 
 function bytesToPngDataUrl(bytes: Uint8Array): string {
@@ -1185,8 +1199,8 @@ export default function App() {
     setStep("editable-exporting");
   }
 
-  function finishExport(fileName: string) {
-    setNotice(`PPTX скачан: ${fileName}`);
+  function finishExport(fileName: string, report?: string) {
+    setNotice(report ? `PPTX скачан: ${fileName}\n${report}` : `PPTX скачан: ${fileName}`);
     setStep("issues");
   }
 
@@ -1277,7 +1291,7 @@ export default function App() {
       <div className="flex-1 overflow-y-auto">
         {notice && (
           <div className="mx-4 mt-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2">
-            <p className="text-[11px] text-white/45 leading-relaxed">{notice}</p>
+            <p className="text-[11px] text-white/45 leading-relaxed whitespace-pre-line">{notice}</p>
           </div>
         )}
         {step === "source" && (
