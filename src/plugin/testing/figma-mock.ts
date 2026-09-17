@@ -15,6 +15,8 @@ export interface MockPaint {
   opacity?: number;
   color?: { r: number; g: number; b: number };
   gradientStops?: Array<{ position: number; color: { r: number; g: number; b: number; a: number } }>;
+  imageHash?: string;
+  scaleMode?: string;
   blendMode?: string;
 }
 
@@ -267,6 +269,13 @@ export function installMockFigma(roots: MockNodeInit[], options: MockFigmaOption
     },
     getSlideGrid() {
       return [page.children.filter(node => node.type === "SLIDE")];
+    },
+    createRectangle() {
+      const rect = new MockNode({ type: "RECTANGLE" });
+      rect.parent = page;
+      page.children.push(rect);
+      registerNode(rect);
+      return rect;
     },
     async loadFontAsync(font: { family: string; style: string }) {
       handle.loadedFonts.push(font);

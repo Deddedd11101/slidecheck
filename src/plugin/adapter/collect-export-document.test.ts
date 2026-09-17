@@ -135,6 +135,24 @@ describe("collectExportDocument / fallback", () => {
 });
 
 describe("collectExportDocument / поэлементная растеризация", () => {
+  it("растеризует фон слайда с картинкой отдельно, дети остаются нативными", async () => {
+    installMockFigma([frame([
+      { type: "TEXT", x: 100, y: 100, width: 600, height: 80, characters: "Поверх фото", fills: [SOLID_BLACK] },
+    ], { fills: [{ type: "IMAGE", imageHash: "abc", scaleMode: "FILL" }] })]);
+    const rootsBefore = figma.currentPage.children.length;
+
+    const slide = (await collectExportDocument("page")).slides[0];
+
+    expect(slide.mode).toBe("editable");
+    expect(slide.elements[0]).toMatchObject({ kind: "image", x: 0, y: 0, width: 1920, height: 1080 });
+    expect(slide.elements[1]).toMatchObject({ kind: "text", text: "Поверх фото" });
+    expect(slide.rasterReasons?.[0]).toContain("фон слайда");
+    // временный прямоугольник не должен остаться в документе
+    expect(figma.currentPage.children.length).toBe(rootsBefore);
+    uninstallMockFigma();
+  });
+
+
   it("растеризует только карточку с тенью, остальное оставляет векторным", async () => {
     installMockFigma([frame([
       { type: "TEXT", x: 0, y: 0, width: 500, height: 80, characters: "Заголовок", fills: [SOLID_BLACK] },

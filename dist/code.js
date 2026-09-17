@@ -181,8 +181,13 @@
         try {
           const context = { root, rasterReasons: [] };
           const elements = [];
-          const background = getContainerBackground(context, root);
-          if (background) elements.push(background);
+          if (hasNonSolidPaint(getPaints(root, "fills"))) {
+            elements.push(yield rasterizeBackground(root));
+            context.rasterReasons.push(`${root.name}: \u0444\u043E\u043D \u0441\u043B\u0430\u0439\u0434\u0430 \u0441 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u043E\u043C \u0438\u043B\u0438 \u043A\u0430\u0440\u0442\u0438\u043D\u043A\u043E\u0439`);
+          } else {
+            const background = getContainerBackground(context, root);
+            if (background) elements.push(background);
+          }
           for (const child of root.children) {
             yield collectNode(context, child, elements);
           }
@@ -222,7 +227,6 @@
   function getSlideFallbackReason(root) {
     if (hasVisibleEffects(root)) return `${root.name}: \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u043D\u0430 \u0441\u0430\u043C\u043E\u043C \u0441\u043B\u0430\u0439\u0434\u0435`;
     if (isBlended(root)) return `${root.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u043D\u0430 \u0441\u043B\u0430\u0439\u0434\u0435`;
-    if (hasNonSolidPaint(getPaints(root, "fills"))) return `${root.name}: \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u0438\u043B\u0438 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0432 \u0444\u043E\u043D\u0435 \u0441\u043B\u0430\u0439\u0434\u0430`;
     if (hasBlendedDescendant(root)) return `${root.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0432\u043D\u0443\u0442\u0440\u0438 \u0441\u043B\u0430\u0439\u0434\u0430`;
     return null;
   }
@@ -336,6 +340,34 @@
         rotation: 0,
         opacity: 1
       };
+    });
+  }
+  function rasterizeBackground(root) {
+    return __async(this, null, function* () {
+      const probe = figma.createRectangle();
+      try {
+        probe.name = "SlideCheck: \u0444\u043E\u043D \u0441\u043B\u0430\u0439\u0434\u0430";
+        probe.resize(root.width, root.height);
+        probe.fills = getPaints(root, "fills");
+        probe.strokes = [];
+        const bytes = yield probe.exportAsync({
+          format: "PNG",
+          constraint: { type: "SCALE", value: getRasterScale(root.width, root.height) }
+        });
+        return {
+          kind: "image",
+          id: `${root.id}:bg`,
+          bytes,
+          x: 0,
+          y: 0,
+          width: root.width,
+          height: root.height,
+          rotation: 0,
+          opacity: 1
+        };
+      } finally {
+        probe.remove();
+      }
     });
   }
   function getRasterScale(width, height) {

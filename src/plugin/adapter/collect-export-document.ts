@@ -46,8 +46,13 @@ async function collectExportSlide(root: FrameNode | SlideNode): Promise<ExportSl
     try {
       const context: SlideContext = { root, rasterReasons: [] };
       const elements: ExportElementDto[] = [];
-      const background = getContainerBackground(context, root);
-      if (background) elements.push(background);
+      if (hasNonSolidPaint(getPaints(root, "fills"))) {
+        elements.push(await rasterizeBackground(root));
+        context.rasterReasons.push(`${root.name}: фон слайда с градиентом или картинкой`);
+      } else {
+        const background = getContainerBackground(context, root);
+        if (background) elements.push(background);
+      }
 
       for (const child of root.children) {
         await collectNode(context, child, elements);
@@ -93,7 +98,6 @@ async function imageOnlySlide(root: FrameNode | SlideNode, reason: string): Prom
 function getSlideFallbackReason(root: FrameNode | SlideNode): string | null {
   if (hasVisibleEffects(root)) return `${root.name}: эффекты на самом слайде`;
   if (isBlended(root)) return `${root.name}: режим наложения на слайде`;
-  if (hasNonSolidPaint(getPaints(root, "fills"))) return `${root.name}: градиент или изображение в фоне слайда`;
   if (hasBlendedDescendant(root)) return `${root.name}: режим наложения внутри слайда`;
   return null;
 }
@@ -245,6 +249,40 @@ async function rasterize(root: FrameNode | SlideNode, node: SceneNode): Promise<
     rotation: 0,
     opacity: 1,
   };
+}
+
+/**
+ * Фон слайда нечем экспортировать напрямую — у заливки нет своего узла.
+ * Поэтому на время экспорта создаётся прямоугольник с той же заливкой,
+ * рендерится в PNG и сразу удаляется; дети слайда остаются нативными.
+ */
+async function rasterizeBackground(root: FrameNode | SlideNode): Promise<ExportImageDto> {
+  const probe = figma.createRectangle();
+  try {
+    probe.name = "SlideCheck: фон слайда";
+    probe.resize(root.width, root.height);
+    probe.fills = getPaints(root, "fills") as readonly Paint[];
+    probe.strokes = [];
+
+    const bytes = await probe.exportAsync({
+      format: "PNG",
+      constraint: { type: "SCALE", value: getRasterScale(root.width, root.height) },
+    });
+
+    return {
+      kind: "image",
+      id: `${root.id}:bg`,
+      bytes,
+      x: 0,
+      y: 0,
+      width: root.width,
+      height: root.height,
+      rotation: 0,
+      opacity: 1,
+    };
+  } finally {
+    probe.remove();
+  }
 }
 
 function getRasterScale(width: number, height: number): number {
