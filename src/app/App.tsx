@@ -6,7 +6,7 @@ import {
   Layers, Type, LayoutGrid, Zap,
   RotateCcw, ZoomIn, Wand2,
   FileText,
-  Loader2, Circle, XCircle,
+  Loader2, Circle, XCircle, X,
 } from "lucide-react";
 import type { IssueGroup } from "../shared/types";
 import type { ExportDocumentDto, ExportElementDto } from "../shared/export";
@@ -1290,8 +1290,12 @@ export default function App() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         {notice && (
-          <div className="mx-4 mt-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2">
-            <p className="text-[11px] text-white/45 leading-relaxed whitespace-pre-line">{notice}</p>
+          <div className="mx-4 mt-3 rounded-xl border border-white/[0.08] bg-white/[0.04] pl-3 pr-1 py-2 flex items-start gap-1">
+            <p className="flex-1 max-h-28 overflow-y-auto text-[11px] text-white/45 leading-relaxed whitespace-pre-line break-words">{notice}</p>
+            <button onClick={() => setNotice(null)} aria-label="Скрыть"
+              className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 text-white/25 hover:text-white/60 hover:bg-white/[0.07] transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
         {step === "source" && (
