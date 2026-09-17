@@ -1046,8 +1046,8 @@ function ApplyingStep({ scope, settings, targets, mode, onDone, onError }: {
 
 // ─── Step: Final ──────────────────────────────────────────────────────────
 
-function FinalStep({ onRestart, scoreBefore, scoreAfter, fixedCount, skippedCount, copyPageName, remainingIssues }: {
-  onRestart: () => void;
+function FinalStep({ onRestart, onExport, onEditableExport, scoreBefore, scoreAfter, fixedCount, skippedCount, copyPageName, remainingIssues }: {
+  onRestart: () => void; onExport: () => void; onEditableExport: () => void;
   scoreBefore: number; scoreAfter: number; fixedCount: number; skippedCount: number;
   copyPageName: string; remainingIssues: Issue[];
 }) {
@@ -1138,6 +1138,14 @@ function FinalStep({ onRestart, scoreBefore, scoreAfter, fixedCount, skippedCoun
             <span className="text-[10.5px] text-emerald-400/70 truncate">Копия: {copyPageName}</span>
           </div>
         )}
+        <button onClick={onExport}
+          className="w-full border border-lime-400/20 hover:border-lime-400/40 hover:bg-lime-400/[0.05] text-lime-300/75 hover:text-lime-200 text-[11px] font-medium py-2.5 rounded-xl transition-colors">
+          <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Скачать PPTX как изображения</span>
+        </button>
+        <button onClick={onEditableExport}
+          className="w-full border border-lime-400/20 hover:border-lime-300/35 hover:bg-lime-400/[0.05] text-lime-300/70 hover:text-lime-200 text-[11px] font-medium py-2 rounded-xl transition-colors">
+          <span className="flex items-center justify-center gap-1.5"><FileText className="w-3.5 h-3.5" />Попробовать editable PPTX</span>
+        </button>
         <GhostBtn onClick={onRestart}>
           <span className="flex items-center justify-center gap-1.5">
             <RotateCcw className="w-3 h-3" />Новая проверка
@@ -1166,6 +1174,8 @@ export default function App() {
   const [scanScope, setScanScope] = useState<ScanScope>("page");
   const [scanSettings, setScanSettings] = useState<ScanSettings>(DEFAULT_SCAN_SETTINGS);
   const [notice, setNotice] = useState<string | null>(null);
+  // Экспорт запускается и со списка проблем, и с экрана «Готово» — возвращаемся туда, откуда пришли.
+  const [exportReturnStep, setExportReturnStep] = useState<"issues" | "final">("issues");
 
   const visibleIssues = issues;
   const fixableIssues = visibleIssues.filter(isFixableIssue);
@@ -1175,8 +1185,8 @@ export default function App() {
 
   function goBack() {
     if (step === "detail")  setStep("issues");
-    if (step === "exporting") setStep("issues");
-    if (step === "editable-exporting") setStep("issues");
+    if (step === "exporting") setStep(exportReturnStep);
+    if (step === "editable-exporting") setStep(exportReturnStep);
     if (step === "fixmode") setStep("issues");
     if (step === "scan")    setStep("source");
     if (step === "issues")  setStep("source");
@@ -1189,19 +1199,21 @@ export default function App() {
     setStep("scan");
   }
 
-  function startExport() {
+  function startExport(from: "issues" | "final" = "issues") {
     setNotice(null);
+    setExportReturnStep(from);
     setStep("exporting");
   }
 
-  function startEditableExport() {
+  function startEditableExport(from: "issues" | "final" = "issues") {
     setNotice(null);
+    setExportReturnStep(from);
     setStep("editable-exporting");
   }
 
   function finishExport(fileName: string, report?: string) {
     setNotice(report ? `PPTX скачан: ${fileName}\n${report}` : `PPTX скачан: ${fileName}`);
-    setStep("issues");
+    setStep(exportReturnStep);
   }
 
   function finishScan(nextIssues: Issue[], nextSlideCount: number) {
@@ -1309,8 +1321,8 @@ export default function App() {
             onDetail={(iss) => { setDetail(iss); setStep("detail"); }}
             onFix={() => startFixes()}
             onRestart={() => setStep("source")}
-            onExport={startExport}
-            onEditableExport={startEditableExport} />
+            onExport={() => startExport("issues")}
+            onEditableExport={() => startEditableExport("issues")} />
         )}
         {step === "detail" && detail && (
           <DetailStep issue={detail} onBack={() => setStep("issues")} onSelect={selectNode}
@@ -1318,13 +1330,13 @@ export default function App() {
         )}
         {step === "exporting" && (
           <ExportStep scope={scanScope} onDone={finishExport}
-            onError={(message) => { setNotice(message); setStep("issues"); }}
-            onBack={() => setStep("issues")} />
+            onError={(message) => { setNotice(message); setStep(exportReturnStep); }}
+            onBack={() => setStep(exportReturnStep)} />
         )}
         {step === "editable-exporting" && (
           <EditableExportStep scope={scanScope} onDone={finishExport}
-            onError={(message) => { setNotice(message); setStep("issues"); }}
-            onBack={() => setStep("issues")} />
+            onError={(message) => { setNotice(message); setStep(exportReturnStep); }}
+            onBack={() => setStep(exportReturnStep)} />
         )}
         {step === "fixmode" && (
           <FixModeStep issues={pendingFixIssues} onNext={(targets, mode) => { setPendingFixTargets(targets); setFixMode(mode); setStep("applying"); }} />
@@ -1335,6 +1347,7 @@ export default function App() {
         )}
         {step === "final" && (
           <FinalStep
+            onExport={() => startExport("final")} onEditableExport={() => startEditableExport("final")}
             onRestart={() => { setStep("source"); setFixedCount(0); setSkippedFixCount(0); setScoreAfterFix(0); setPendingFixIssues([]); setPendingFixTargets([]); setCopyPageName(""); }}
             scoreBefore={scoreBeforeFix} scoreAfter={scoreAfterFix} fixedCount={fixedCount} skippedCount={skippedFixCount}
             copyPageName={copyPageName} remainingIssues={remainingIssues}
