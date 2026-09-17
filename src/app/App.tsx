@@ -592,7 +592,7 @@ function bytesToPngDataUrl(bytes: Uint8Array): string {
 
 // ─── Step: Issues ─────────────────────────────────────────────────────────
 
-function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onRestart, onExport }: {
+function IssuesStep({ issues, slideCount, fixableCount, onDetail, onFix, onRestart, onExport, onEditableExport }: {
   issues: Issue[]; slideCount: number;
   fixableCount: number;
   onDetail: (issue: Issue) => void; onFix: () => void; onRestart: () => void; onExport: () => void; onEditableExport: () => void;
