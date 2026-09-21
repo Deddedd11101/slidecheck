@@ -491,7 +491,7 @@ async function createEditablePptxFile(document: ExportDocumentDto): Promise<stri
     }
 
     for (const element of source.elements) {
-      addEditableElement(outputSlide, element, source.width, source.height);
+      addEditableElement(pptx, outputSlide, element, source.width, source.height);
     }
   }
 
@@ -516,7 +516,7 @@ function addContainedImage(slide: PptxGenJS.Slide, data: string, width: number, 
   });
 }
 
-function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, slideWidth: number, slideHeight: number): void {
+function addEditableElement(pptx: PptxGenJS, slide: PptxGenJS.Slide, element: ExportElementDto, slideWidth: number, slideHeight: number): void {
   const box = toPptxBox(element, slideWidth, slideHeight);
   const rotate = toPptxRotation(element.rotation);
   const transparency = toTransparency(element.opacity);
@@ -552,12 +552,12 @@ function addEditableElement(slide: PptxGenJS.Slide, element: ExportElementDto, s
 
   const isRounded = element.shape === "rect" && (element.cornerRadius ?? 0) > 0;
   const shapeType = element.shape === "ellipse"
-    ? PptxGenJS.ShapeType.ellipse
+    ? pptx.ShapeType.ellipse
     : element.shape === "line"
-      ? PptxGenJS.ShapeType.line
+      ? pptx.ShapeType.line
       : isRounded
-        ? PptxGenJS.ShapeType.roundRect
-        : PptxGenJS.ShapeType.rect;
+        ? pptx.ShapeType.roundRect
+        : pptx.ShapeType.rect;
 
   slide.addShape(shapeType, {
     ...box,
