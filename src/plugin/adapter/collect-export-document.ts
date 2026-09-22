@@ -48,7 +48,7 @@ async function collectExportSlide(root: FrameNode | SlideNode): Promise<ExportSl
       const elements: ExportElementDto[] = [];
       if (hasNonSolidPaint(getPaints(root, "fills"))) {
         elements.push(await rasterizeBackground(root));
-        context.rasterReasons.push(`${root.name}: фон слайда с градиентом или картинкой`);
+        context.rasterReasons.push(`${root.name}: сложная заливка фона слайда`);
       } else {
         const background = getContainerBackground(context, root);
         if (background) elements.push(background);
@@ -93,9 +93,20 @@ async function imageOnlySlide(root: FrameNode | SlideNode, reason: string): Prom
 
 /**
  * Весь слайд уходит в PNG только там, где поэлементная растеризация не спасает:
- * режим наложения считается относительно подложки, а фон слайда нечем заменить.
+ * режим наложения и background blur зависят от подложки; корневые маски,
+ * обводки и прозрачность требуют общей композиции.
  */
 function getSlideFallbackReason(root: FrameNode | SlideNode): string | null {
+  if (getOpacity(root) < 1) return `${root.name}: прозрачность всего слайда`;
+  if (root.children.some(child => child.visible && "isMask" in child && child.isMask)) {
+    return `${root.name}: маска непосредственно на слайде`;
+  }
+  if (hasVisiblePaint(getPaints(root, "strokes"))) return `${root.name}: обводка слайда`;
+  if (hasComplexCorners(root) || (isClipping(root) && getCornerRadius(root))) {
+    return `${root.name}: скругленная граница слайда`;
+  }
+  if (hasBackdropBlur(root)) return `${root.name}: размытие подложки внутри слайда`;
+  if (!hasAxisAlignedRoot(root)) return `${root.name}: трансформация корневого фрейма`;
   if (hasVisibleEffects(root)) return `${root.name}: эффекты на самом слайде`;
   if (isBlended(root)) return `${root.name}: режим наложения на слайде`;
   if (hasBlendedDescendant(root)) return `${root.name}: режим наложения внутри слайда`;
@@ -140,6 +151,14 @@ async function collectNode(
  * прозрачность применяются ко всей группе сразу.
  */
 function getContainerRasterReason(node: SceneNode & ChildrenMixin): string | null {
+  if (hasUnsupportedTransform(node)) return `${node.name}: отражение или деформация контейнера`;
+  // Container borders can paint over children; flattening them into a background
+  // shape changes that ordering, so keep the complete container appearance.
+  if (hasVisiblePaint(getPaints(node, "strokes"))) return `${node.name}: обводка контейнера`;
+  if (hasComplexCorners(node)) return `${node.name}: сложное скругление углов`;
+  if (isClipping(node) && (getCornerRadius(node) || absoluteRotation(node) !== 0)) {
+    return `${node.name}: обрезка скругленного или повернутого контейнера`;
+  }
   if (hasVisibleEffects(node)) return `${node.name}: эффекты на группе`;
   if (isBlended(node)) return `${node.name}: режим наложения на группе`;
   if (getOpacity(node) < 1) return `${node.name}: прозрачность группы`;
@@ -161,6 +180,7 @@ function getNativeElement(context: SlideContext, node: SceneNode): ExportElement
   if (node.type === "TEXT") {
     if (node.fontName === figma.mixed || node.fontSize === figma.mixed) return null;
     if (node.textTruncation === "ENDING") return null;
+    if (hasUnsupportedTextStyle(node)) return null;
     const fill = getSolidPaint(node.fills);
     if (!fill) return null;
 
@@ -174,6 +194,7 @@ function getNativeElement(context: SlideContext, node: SceneNode): ExportElement
       colorOpacity: fill.opacity,
       bold: node.fontName.style.toLowerCase().includes("bold"),
       italic: node.fontName.style.toLowerCase().includes("italic"),
+      valign: node.textAlignVertical === "CENTER" ? "mid" : node.textAlignVertical === "BOTTOM" ? "bottom" : "top",
       align: node.textAlignHorizontal === "CENTER"
         ? "center"
         : node.textAlignHorizontal === "RIGHT"
@@ -185,6 +206,9 @@ function getNativeElement(context: SlideContext, node: SceneNode): ExportElement
   }
 
   if (NATIVE_SHAPES.has(node.type)) {
+    if (hasComplexCorners(node)) return null;
+    if (node.type === "ELLIPSE" && node.arcData && (node.arcData.startingAngle !== 0 ||
+        Math.abs(node.arcData.endingAngle - Math.PI * 2) > 0.0001 || node.arcData.innerRadius !== 0)) return null;
     const fills = getPaints(node, "fills");
     const strokes = getPaints(node, "strokes");
     if (hasNonSolidPaint(fills) || hasNonSolidPaint(strokes)) return null;
@@ -287,7 +311,7 @@ async function rasterizeBackground(root: FrameNode | SlideNode): Promise<ExportI
 
 function getRasterScale(width: number, height: number): number {
   const longestSide = Math.max(width, height, 1);
-  return Math.min(RASTER_SCALE, Math.max(1, RASTER_MAX_SIDE / longestSide));
+  return Math.min(RASTER_SCALE, RASTER_MAX_SIDE / longestSide);
 }
 
 function getContainerBackground(context: SlideContext, node: SceneNode): ExportShapeDto | null {
@@ -314,7 +338,8 @@ function getElementBox(root: FrameNode | SlideNode, node: SceneNode) {
   const rootBounds = root.absoluteBoundingBox;
   if (!aabb || !rootBounds) return null;
 
-  const rotation = "rotation" in node && typeof node.rotation === "number" ? node.rotation : 0;
+  const rotation = absoluteRotation(node);
+  if (hasUnsupportedTransform(node)) return null;
   const box = rotation === 0 || !("width" in node)
     ? { x: aabb.x, y: aabb.y, width: aabb.width, height: aabb.height }
     : toUnrotatedBox(aabb, node.width, node.height);
@@ -331,6 +356,64 @@ function getElementBox(root: FrameNode | SlideNode, node: SceneNode) {
 
 function getOpacity(node: SceneNode): number {
   return "opacity" in node && typeof node.opacity === "number" ? node.opacity : 1;
+}
+
+function absoluteRotation(node: SceneNode): number {
+  if ("absoluteTransform" in node) {
+    const matrix = node.absoluteTransform;
+    return Math.atan2(-matrix[1][0], matrix[0][0]) * 180 / Math.PI;
+  }
+  return "rotation" in node ? node.rotation : 0;
+}
+
+function hasUnsupportedTransform(node: SceneNode): boolean {
+  if (!("absoluteTransform" in node)) return false;
+  const [[a, c], [b, d]] = node.absoluteTransform;
+  // Reflections, skew and scale cannot be represented by a rotation alone.
+  return Math.abs(a * a + b * b - 1) > 0.0001 ||
+    Math.abs(c * c + d * d - 1) > 0.0001 ||
+    Math.abs(a * c + b * d) > 0.0001 || a * d - b * c < 0;
+}
+
+function hasAxisAlignedRoot(node: SceneNode): boolean {
+  if (!("absoluteTransform" in node)) return absoluteRotation(node) === 0;
+  const [[a, c], [b, d]] = node.absoluteTransform;
+  return Math.abs(a - 1) < 0.0001 && Math.abs(d - 1) < 0.0001 &&
+    Math.abs(b) < 0.0001 && Math.abs(c) < 0.0001;
+}
+
+function hasVisiblePaint(paints: readonly Paint[] | typeof figma.mixed): boolean {
+  return paints === figma.mixed || paints.some(paint => paint.visible !== false);
+}
+
+function hasBackdropBlur(node: SceneNode): boolean {
+  if (!node.visible || getOpacity(node) === 0) return false;
+  if ("effects" in node && Array.isArray(node.effects) &&
+      node.effects.some(effect => effect.visible !== false && effect.type === "BACKGROUND_BLUR")) return true;
+  return "children" in node && node.children.some(hasBackdropBlur);
+}
+
+function hasComplexCorners(node: SceneNode): boolean {
+  return ("cornerRadius" in node && node.cornerRadius === figma.mixed) ||
+    ("cornerSmoothing" in node && node.cornerSmoothing > 0);
+}
+
+function hasUnsupportedTextStyle(node: TextNode): boolean {
+  if (hasVisiblePaint(node.strokes)) return true;
+  if (node.textAlignHorizontal === "JUSTIFIED") return true;
+  if (node.textDecoration && node.textDecoration !== "NONE") return true;
+  if (node.textCase && node.textCase !== "ORIGINAL") return true;
+  if (node.lineHeight === figma.mixed || (node.lineHeight && node.lineHeight.unit !== "AUTO")) return true;
+  if (node.letterSpacing === figma.mixed || (node.letterSpacing && node.letterSpacing.value !== 0)) return true;
+  if (node.paragraphSpacing || node.paragraphIndent) return true;
+  if (node.characters.length > 0 && typeof node.getRangeListOptions === "function") {
+    const list = node.getRangeListOptions(0, node.characters.length);
+    if (list === figma.mixed || list.type !== "NONE") return true;
+  }
+  // Weight names such as Medium/Black cannot be represented by a boolean bold flag.
+  if (node.fontName !== figma.mixed &&
+      !/^(regular|normal|roman|bold|italic|oblique|bold italic|bold oblique)$/i.test(node.fontName.style)) return true;
+  return false;
 }
 
 function getRenderBounds(node: SceneNode) {
@@ -388,8 +471,10 @@ function hasVisibleEffects(node: SceneNode): boolean {
 }
 
 function describeLeaf(node: SceneNode): string {
-  if (node.type === "TEXT") return `${node.name}: смешанные стили или сложная заливка текста`;
-  if (NATIVE_SHAPES.has(node.type)) return `${node.name}: градиент или изображение в заливке`;
+  if (hasVisibleEffects(node)) return `${node.name}: эффекты слоя`;
+  if (hasUnsupportedTransform(node)) return `${node.name}: отражение или деформация слоя`;
+  if (node.type === "TEXT") return `${node.name}: неподдерживаемое оформление или смешанные стили текста`;
+  if (NATIVE_SHAPES.has(node.type)) return `${node.name}: сложная заливка или геометрия фигуры`;
   return `${node.name}: слой типа ${node.type}`;
 }
 
@@ -413,10 +498,13 @@ function getCornerRadius(node: SceneNode): number | undefined {
 function hasNonSolidPaint(paints: readonly Paint[] | typeof figma.mixed): boolean {
   if (paints === figma.mixed) return true;
   if (!Array.isArray(paints)) return false;
-  return paints.some(paint => paint.visible !== false && paint.type !== "SOLID");
+  const visible = paints.filter(paint => paint.visible !== false);
+  return visible.length > 1 || visible.some(paint => paint.type !== "SOLID" ||
+    (paint.blendMode && paint.blendMode !== "NORMAL"));
 }
 
 function getSolidPaint(paints: readonly Paint[] | typeof figma.mixed) {
+  if (hasNonSolidPaint(paints)) return null;
   if (paints === figma.mixed || !Array.isArray(paints) || paints.length === 0) return null;
   const paint = paints.find(item => item.visible !== false && item.type === "SOLID");
   if (!paint || paint.type !== "SOLID") return null;

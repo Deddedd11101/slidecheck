@@ -183,7 +183,7 @@
           const elements = [];
           if (hasNonSolidPaint(getPaints(root, "fills"))) {
             elements.push(yield rasterizeBackground(root));
-            context.rasterReasons.push(`${root.name}: \u0444\u043E\u043D \u0441\u043B\u0430\u0439\u0434\u0430 \u0441 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u043E\u043C \u0438\u043B\u0438 \u043A\u0430\u0440\u0442\u0438\u043D\u043A\u043E\u0439`);
+            context.rasterReasons.push(`${root.name}: \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430 \u0444\u043E\u043D\u0430 \u0441\u043B\u0430\u0439\u0434\u0430`);
           } else {
             const background = getContainerBackground(context, root);
             if (background) elements.push(background);
@@ -225,6 +225,16 @@
     });
   }
   function getSlideFallbackReason(root) {
+    if (getOpacity(root) < 1) return `${root.name}: \u043F\u0440\u043E\u0437\u0440\u0430\u0447\u043D\u043E\u0441\u0442\u044C \u0432\u0441\u0435\u0433\u043E \u0441\u043B\u0430\u0439\u0434\u0430`;
+    if (root.children.some((child) => child.visible && "isMask" in child && child.isMask)) {
+      return `${root.name}: \u043C\u0430\u0441\u043A\u0430 \u043D\u0435\u043F\u043E\u0441\u0440\u0435\u0434\u0441\u0442\u0432\u0435\u043D\u043D\u043E \u043D\u0430 \u0441\u043B\u0430\u0439\u0434\u0435`;
+    }
+    if (hasVisiblePaint(getPaints(root, "strokes"))) return `${root.name}: \u043E\u0431\u0432\u043E\u0434\u043A\u0430 \u0441\u043B\u0430\u0439\u0434\u0430`;
+    if (hasComplexCorners(root) || isClipping(root) && getCornerRadius(root)) {
+      return `${root.name}: \u0441\u043A\u0440\u0443\u0433\u043B\u0435\u043D\u043D\u0430\u044F \u0433\u0440\u0430\u043D\u0438\u0446\u0430 \u0441\u043B\u0430\u0439\u0434\u0430`;
+    }
+    if (hasBackdropBlur(root)) return `${root.name}: \u0440\u0430\u0437\u043C\u044B\u0442\u0438\u0435 \u043F\u043E\u0434\u043B\u043E\u0436\u043A\u0438 \u0432\u043D\u0443\u0442\u0440\u0438 \u0441\u043B\u0430\u0439\u0434\u0430`;
+    if (!hasAxisAlignedRoot(root)) return `${root.name}: \u0442\u0440\u0430\u043D\u0441\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u044F \u043A\u043E\u0440\u043D\u0435\u0432\u043E\u0433\u043E \u0444\u0440\u0435\u0439\u043C\u0430`;
     if (hasVisibleEffects(root)) return `${root.name}: \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u043D\u0430 \u0441\u0430\u043C\u043E\u043C \u0441\u043B\u0430\u0439\u0434\u0435`;
     if (isBlended(root)) return `${root.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u043D\u0430 \u0441\u043B\u0430\u0439\u0434\u0435`;
     if (hasBlendedDescendant(root)) return `${root.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0432\u043D\u0443\u0442\u0440\u0438 \u0441\u043B\u0430\u0439\u0434\u0430`;
@@ -255,6 +265,12 @@
     });
   }
   function getContainerRasterReason(node) {
+    if (hasUnsupportedTransform(node)) return `${node.name}: \u043E\u0442\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 \u0434\u0435\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u044F \u043A\u043E\u043D\u0442\u0435\u0439\u043D\u0435\u0440\u0430`;
+    if (hasVisiblePaint(getPaints(node, "strokes"))) return `${node.name}: \u043E\u0431\u0432\u043E\u0434\u043A\u0430 \u043A\u043E\u043D\u0442\u0435\u0439\u043D\u0435\u0440\u0430`;
+    if (hasComplexCorners(node)) return `${node.name}: \u0441\u043B\u043E\u0436\u043D\u043E\u0435 \u0441\u043A\u0440\u0443\u0433\u043B\u0435\u043D\u0438\u0435 \u0443\u0433\u043B\u043E\u0432`;
+    if (isClipping(node) && (getCornerRadius(node) || absoluteRotation(node) !== 0)) {
+      return `${node.name}: \u043E\u0431\u0440\u0435\u0437\u043A\u0430 \u0441\u043A\u0440\u0443\u0433\u043B\u0435\u043D\u043D\u043E\u0433\u043E \u0438\u043B\u0438 \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0442\u043E\u0433\u043E \u043A\u043E\u043D\u0442\u0435\u0439\u043D\u0435\u0440\u0430`;
+    }
     if (hasVisibleEffects(node)) return `${node.name}: \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u043D\u0430 \u0433\u0440\u0443\u043F\u043F\u0435`;
     if (isBlended(node)) return `${node.name}: \u0440\u0435\u0436\u0438\u043C \u043D\u0430\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u043D\u0430 \u0433\u0440\u0443\u043F\u043F\u0435`;
     if (getOpacity(node) < 1) return `${node.name}: \u043F\u0440\u043E\u0437\u0440\u0430\u0447\u043D\u043E\u0441\u0442\u044C \u0433\u0440\u0443\u043F\u043F\u044B`;
@@ -273,6 +289,7 @@
     if (node.type === "TEXT") {
       if (node.fontName === figma.mixed || node.fontSize === figma.mixed) return null;
       if (node.textTruncation === "ENDING") return null;
+      if (hasUnsupportedTextStyle(node)) return null;
       const fill = getSolidPaint(node.fills);
       if (!fill) return null;
       const text = __spreadValues({
@@ -285,11 +302,14 @@
         colorOpacity: fill.opacity,
         bold: node.fontName.style.toLowerCase().includes("bold"),
         italic: node.fontName.style.toLowerCase().includes("italic"),
+        valign: node.textAlignVertical === "CENTER" ? "mid" : node.textAlignVertical === "BOTTOM" ? "bottom" : "top",
         align: node.textAlignHorizontal === "CENTER" ? "center" : node.textAlignHorizontal === "RIGHT" ? "right" : "left"
       }, box);
       return text;
     }
     if (NATIVE_SHAPES.has(node.type)) {
+      if (hasComplexCorners(node)) return null;
+      if (node.type === "ELLIPSE" && node.arcData && (node.arcData.startingAngle !== 0 || Math.abs(node.arcData.endingAngle - Math.PI * 2) > 1e-4 || node.arcData.innerRadius !== 0)) return null;
       const fills = getPaints(node, "fills");
       const strokes = getPaints(node, "strokes");
       if (hasNonSolidPaint(fills) || hasNonSolidPaint(strokes)) return null;
@@ -372,7 +392,7 @@
   }
   function getRasterScale(width, height) {
     const longestSide = Math.max(width, height, 1);
-    return Math.min(RASTER_SCALE, Math.max(1, RASTER_MAX_SIDE / longestSide));
+    return Math.min(RASTER_SCALE, RASTER_MAX_SIDE / longestSide);
   }
   function getContainerBackground(context, node) {
     if (node.type !== "FRAME" && node.type !== "SLIDE" && node.type !== "COMPONENT" && node.type !== "INSTANCE") {
@@ -394,7 +414,8 @@
     const aabb = "absoluteBoundingBox" in node ? node.absoluteBoundingBox : null;
     const rootBounds = root.absoluteBoundingBox;
     if (!aabb || !rootBounds) return null;
-    const rotation = "rotation" in node && typeof node.rotation === "number" ? node.rotation : 0;
+    const rotation = absoluteRotation(node);
+    if (hasUnsupportedTransform(node)) return null;
     const box = rotation === 0 || !("width" in node) ? { x: aabb.x, y: aabb.y, width: aabb.width, height: aabb.height } : toUnrotatedBox(aabb, node.width, node.height);
     return {
       x: box.x - rootBounds.x,
@@ -407,6 +428,49 @@
   }
   function getOpacity(node) {
     return "opacity" in node && typeof node.opacity === "number" ? node.opacity : 1;
+  }
+  function absoluteRotation(node) {
+    if ("absoluteTransform" in node) {
+      const matrix = node.absoluteTransform;
+      return Math.atan2(-matrix[1][0], matrix[0][0]) * 180 / Math.PI;
+    }
+    return "rotation" in node ? node.rotation : 0;
+  }
+  function hasUnsupportedTransform(node) {
+    if (!("absoluteTransform" in node)) return false;
+    const [[a, c], [b, d]] = node.absoluteTransform;
+    return Math.abs(a * a + b * b - 1) > 1e-4 || Math.abs(c * c + d * d - 1) > 1e-4 || Math.abs(a * c + b * d) > 1e-4 || a * d - b * c < 0;
+  }
+  function hasAxisAlignedRoot(node) {
+    if (!("absoluteTransform" in node)) return absoluteRotation(node) === 0;
+    const [[a, c], [b, d]] = node.absoluteTransform;
+    return Math.abs(a - 1) < 1e-4 && Math.abs(d - 1) < 1e-4 && Math.abs(b) < 1e-4 && Math.abs(c) < 1e-4;
+  }
+  function hasVisiblePaint(paints) {
+    return paints === figma.mixed || paints.some((paint) => paint.visible !== false);
+  }
+  function hasBackdropBlur(node) {
+    if (!node.visible || getOpacity(node) === 0) return false;
+    if ("effects" in node && Array.isArray(node.effects) && node.effects.some((effect) => effect.visible !== false && effect.type === "BACKGROUND_BLUR")) return true;
+    return "children" in node && node.children.some(hasBackdropBlur);
+  }
+  function hasComplexCorners(node) {
+    return "cornerRadius" in node && node.cornerRadius === figma.mixed || "cornerSmoothing" in node && node.cornerSmoothing > 0;
+  }
+  function hasUnsupportedTextStyle(node) {
+    if (hasVisiblePaint(node.strokes)) return true;
+    if (node.textAlignHorizontal === "JUSTIFIED") return true;
+    if (node.textDecoration && node.textDecoration !== "NONE") return true;
+    if (node.textCase && node.textCase !== "ORIGINAL") return true;
+    if (node.lineHeight === figma.mixed || node.lineHeight && node.lineHeight.unit !== "AUTO") return true;
+    if (node.letterSpacing === figma.mixed || node.letterSpacing && node.letterSpacing.value !== 0) return true;
+    if (node.paragraphSpacing || node.paragraphIndent) return true;
+    if (node.characters.length > 0 && typeof node.getRangeListOptions === "function") {
+      const list = node.getRangeListOptions(0, node.characters.length);
+      if (list === figma.mixed || list.type !== "NONE") return true;
+    }
+    if (node.fontName !== figma.mixed && !/^(regular|normal|roman|bold|italic|oblique|bold italic|bold oblique)$/i.test(node.fontName.style)) return true;
+    return false;
   }
   function getRenderBounds(node) {
     const rendered = "absoluteRenderBounds" in node ? node.absoluteRenderBounds : null;
@@ -449,8 +513,10 @@
     return effects.some((effect) => effect.visible !== false);
   }
   function describeLeaf(node) {
-    if (node.type === "TEXT") return `${node.name}: \u0441\u043C\u0435\u0448\u0430\u043D\u043D\u044B\u0435 \u0441\u0442\u0438\u043B\u0438 \u0438\u043B\u0438 \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u0430`;
-    if (NATIVE_SHAPES.has(node.type)) return `${node.name}: \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442 \u0438\u043B\u0438 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0432 \u0437\u0430\u043B\u0438\u0432\u043A\u0435`;
+    if (hasVisibleEffects(node)) return `${node.name}: \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u0441\u043B\u043E\u044F`;
+    if (hasUnsupportedTransform(node)) return `${node.name}: \u043E\u0442\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 \u0434\u0435\u0444\u043E\u0440\u043C\u0430\u0446\u0438\u044F \u0441\u043B\u043E\u044F`;
+    if (node.type === "TEXT") return `${node.name}: \u043D\u0435\u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u043E\u0435 \u043E\u0444\u043E\u0440\u043C\u043B\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 \u0441\u043C\u0435\u0448\u0430\u043D\u043D\u044B\u0435 \u0441\u0442\u0438\u043B\u0438 \u0442\u0435\u043A\u0441\u0442\u0430`;
+    if (NATIVE_SHAPES.has(node.type)) return `${node.name}: \u0441\u043B\u043E\u0436\u043D\u0430\u044F \u0437\u0430\u043B\u0438\u0432\u043A\u0430 \u0438\u043B\u0438 \u0433\u0435\u043E\u043C\u0435\u0442\u0440\u0438\u044F \u0444\u0438\u0433\u0443\u0440\u044B`;
     return `${node.name}: \u0441\u043B\u043E\u0439 \u0442\u0438\u043F\u0430 ${node.type}`;
   }
   function getPaints(node, key) {
@@ -470,10 +536,12 @@
   function hasNonSolidPaint(paints) {
     if (paints === figma.mixed) return true;
     if (!Array.isArray(paints)) return false;
-    return paints.some((paint) => paint.visible !== false && paint.type !== "SOLID");
+    const visible = paints.filter((paint) => paint.visible !== false);
+    return visible.length > 1 || visible.some((paint) => paint.type !== "SOLID" || paint.blendMode && paint.blendMode !== "NORMAL");
   }
   function getSolidPaint(paints) {
     var _a;
+    if (hasNonSolidPaint(paints)) return null;
     if (paints === figma.mixed || !Array.isArray(paints) || paints.length === 0) return null;
     const paint = paints.find((item) => item.visible !== false && item.type === "SOLID");
     if (!paint || paint.type !== "SOLID") return null;

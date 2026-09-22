@@ -56,6 +56,24 @@ Create a page with at least three top-level frames:
 
 ## Known Manual Validation Boundary
 
+### Editable export regression cases
+
+Export a 16:9 frame in both modes and compare in PowerPoint:
+
+- Root mask and root opacity: whole-slide PNG, with an explanation in the report.
+- Border-only nested frame: visible rasterized border, no missing frame.
+- Rotated group with unrotated child text: child has the group's orientation.
+- Multiple solid fills: same composited color as the source, rasterized locally.
+- Gradient root background: background image plus editable simple text.
+- Background blur: whole-slide PNG to preserve backdrop dependence.
+- Explicit line height, tracking or decoration: raster text; ordinary text with
+  top/center/bottom alignment remains editable.
+- A rasterized layer larger than 3840 px: no PNG side exceeds the configured cap
+  except possible renderer rounding.
+
+Check the report after export, the native object selection in PowerPoint and
+the absence of leftover temporary background rectangles in Figma.
+
 The following cannot be fully verified by local unit tests:
 
 - exact Figma node properties for masks and media;

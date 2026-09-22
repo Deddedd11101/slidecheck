@@ -39,11 +39,22 @@ installMockFigma(scene) -> collectExportDocument(scope) -> assert on the DTO
 Every test that installs the mock must call `uninstallMockFigma()` afterwards —
 the global is shared.
 
-3. UI tests with mocked transport
+3. Generated PPTX checks
+
+The editable builder is tested without React or Figma by writing real PPTX
+buffers and inspecting the OOXML ZIP contents. Checks cover editable text,
+shape geometry/rotation/strokes, image relationships and valid PNG media.
+These checks prove file structure, not PowerPoint's font rendering.
+
+The Figma mock includes composed parent transforms and valid tiny PNG data.
+It does not render masks, shadows or text: visual fidelity still needs Figma
+and PowerPoint smoke tests.
+
+4. UI tests with mocked transport
 
 Run the React UI locally with fake scan responses.
 
-4. Manual Figma smoke tests
+5. Manual Figma smoke tests
 
 Use a small controlled Figma/Figma Slides file:
 - 5-10 slides;

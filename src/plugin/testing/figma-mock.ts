@@ -49,8 +49,15 @@ export interface MockNodeInit {
   fontName?: { family: string; style: string } | typeof MIXED;
   fontSize?: number | typeof MIXED;
   textAlignHorizontal?: string;
+  textAlignVertical?: string;
+  lineHeight?: { unit: "AUTO" } | { unit: "PIXELS" | "PERCENT"; value: number } | typeof MIXED;
+  letterSpacing?: { unit: "PIXELS" | "PERCENT"; value: number } | typeof MIXED;
+  textDecoration?: string | typeof MIXED;
+  getRangeListOptions?: (start: number, end: number) => { type: "NONE" | "ORDERED" | "UNORDERED" } | typeof MIXED;
   textTruncation?: string;
-  cornerRadius?: number;
+  cornerRadius?: number | typeof MIXED;
+  cornerSmoothing?: number;
+  arcData?: { startingAngle: number; endingAngle: number; innerRadius: number };
   children?: MockNodeInit[];
 }
 
@@ -88,8 +95,15 @@ export class MockNode {
   fontName: { family: string; style: string } | typeof MIXED;
   fontSize: number | typeof MIXED;
   textAlignHorizontal: string;
+  textAlignVertical: string;
+  lineHeight: NonNullable<MockNodeInit["lineHeight"]>;
+  letterSpacing: NonNullable<MockNodeInit["letterSpacing"]>;
+  textDecoration: NonNullable<MockNodeInit["textDecoration"]>;
+  getRangeListOptions: NonNullable<MockNodeInit["getRangeListOptions"]>;
   textTruncation: string;
-  cornerRadius: number;
+  cornerRadius: number | typeof MIXED;
+  cornerSmoothing: number;
+  arcData?: MockNodeInit["arcData"];
   children: MockNode[];
   parent: MockNode | MockPage | null = null;
   removed = false;
@@ -119,22 +133,40 @@ export class MockNode {
     this.fontName = init.fontName ?? { family: "Inter", style: "Regular" };
     this.fontSize = init.fontSize ?? 16;
     this.textAlignHorizontal = init.textAlignHorizontal ?? "LEFT";
+    this.textAlignVertical = init.textAlignVertical ?? "TOP";
+    this.lineHeight = init.lineHeight ?? { unit: "AUTO" };
+    this.letterSpacing = init.letterSpacing ?? { unit: "PIXELS", value: 0 };
+    this.textDecoration = init.textDecoration ?? "NONE";
+    this.getRangeListOptions = init.getRangeListOptions ?? (() => ({ type: "NONE" }));
     this.textTruncation = init.textTruncation ?? "DISABLED";
     this.cornerRadius = init.cornerRadius ?? 0;
+    this.cornerSmoothing = init.cornerSmoothing ?? 0;
+    this.arcData = init.arcData ? { ...init.arcData } : undefined;
     this.children = (init.children ?? []).map(child => new MockNode(child));
     for (const child of this.children) child.parent = this;
   }
 
+  get absoluteTransform(): [[number, number, number], [number, number, number]] {
+    // Figma positive rotation is counterclockwise in a Y-down coordinate system.
+    const radians = this.rotation * Math.PI / 180;
+    const c = Math.cos(radians);
+    const s = Math.sin(radians);
+    if (!(this.parent instanceof MockNode)) return [[c, s, this.x], [-s, c, this.y]];
+    const [[a, b, tx], [d, e, ty]] = this.parent.absoluteTransform;
+    return [
+      [a * c - b * s, a * s + b * c, a * this.x + b * this.y + tx],
+      [d * c - e * s, d * s + e * c, d * this.x + e * this.y + ty],
+    ];
+  }
+
   get absoluteBoundingBox(): { x: number; y: number; width: number; height: number } {
-    let x = this.x;
-    let y = this.y;
-    let parent: MockNode | MockPage | null = this.parent;
-    while (parent instanceof MockNode) {
-      x += parent.x;
-      y += parent.y;
-      parent = parent.parent;
-    }
-    return { x, y, width: this.width, height: this.height };
+    const [[a, b, tx], [d, e, ty]] = this.absoluteTransform;
+    const corners = [[0, 0], [this.width, 0], [0, this.height], [this.width, this.height]];
+    const xs = corners.map(([x, y]) => a * x + b * y + tx);
+    const ys = corners.map(([x, y]) => d * x + e * y + ty);
+    const x = Math.min(...xs);
+    const y = Math.min(...ys);
+    return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
   }
 
   get absoluteRenderBounds(): { x: number; y: number; width: number; height: number } {
@@ -174,8 +206,15 @@ export class MockNode {
     copy.fontName = this.fontName;
     copy.fontSize = this.fontSize;
     copy.textAlignHorizontal = this.textAlignHorizontal;
+    copy.textAlignVertical = this.textAlignVertical;
+    copy.lineHeight = typeof this.lineHeight === "symbol" ? this.lineHeight : { ...this.lineHeight };
+    copy.letterSpacing = typeof this.letterSpacing === "symbol" ? this.letterSpacing : { ...this.letterSpacing };
+    copy.textDecoration = this.textDecoration;
+    copy.getRangeListOptions = this.getRangeListOptions;
     copy.textTruncation = this.textTruncation;
     copy.cornerRadius = this.cornerRadius;
+    copy.cornerSmoothing = this.cornerSmoothing;
+    copy.arcData = this.arcData ? { ...this.arcData } : undefined;
     copy.children = this.children.map(child => {
       const clonedChild = child.clone();
       clonedChild.parent = copy;
@@ -203,7 +242,15 @@ export class MockNode {
 
   async exportAsync(settings: Record<string, unknown> = {}): Promise<Uint8Array> {
     this.exportCalls.push(settings);
-    return new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    // Complete transparent RGBA 1x1 PNG, including CRCs and compressed pixel data.
+    return new Uint8Array([
+      137, 80, 78, 71, 13, 10, 26, 10,
+      0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+      8, 6, 0, 0, 0, 31, 21, 196, 137,
+      0, 0, 0, 11, 73, 68, 65, 84, 120, 156, 99, 96, 0, 2,
+      0, 0, 5, 0, 1, 122, 94, 171, 63,
+      0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+    ]);
   }
 }
 

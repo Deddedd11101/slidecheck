@@ -39,6 +39,7 @@ export interface ExportTextDto extends ExportBoundsDto {
   bold: boolean;
   italic: boolean;
   align: "left" | "center" | "right";
+  valign?: "top" | "mid" | "bottom";
 }
 
 export interface ExportShapeDto extends ExportBoundsDto {
