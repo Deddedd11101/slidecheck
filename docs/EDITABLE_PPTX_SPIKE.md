@@ -188,3 +188,70 @@ The prototype is successful when:
 The recommended default is per-slide hybrid export with an explicit fallback,
 because a hard error makes the tool less useful and silent conversion makes it
 untrustworthy.
+
+## Implemented Behavior (2026-09)
+
+The first prototype dropped an entire slide to PNG as soon as any node carried
+an effect, a blend mode, or an unsupported node type. On real decks that is
+almost every slide — an icon or a single drop shadow was enough — so the
+"editable" mode never actually produced editable output.
+
+The fallback is now per element. These cases force a whole slide to PNG:
+
+- a blend mode anywhere on the slide (the result depends on the backdrop, so a
+  rasterized layer would blend against the wrong pixels);
+- background blur anywhere on the slide (it depends on the backdrop);
+- root effects, opacity, strokes, direct mask children, transformed roots, or
+  rounded root clipping.
+
+Gradient, image and multiple solid fills on an otherwise supported root are
+rasterized as a separate background; children stay editable. The temporary
+background rectangle is removed in a finally block.
+
+Everything else degrades locally:
+
+| Case | Result |
+| --- | --- |
+| Text with a single style and solid fill | native PPTX text |
+| `RECTANGLE` / `ELLIPSE` / `LINE`, solid fill or stroke | native PPTX shape, with corner radius and stroke width |
+| Frame / component background with a solid fill | native PPTX rectangle |
+| Vector, icon, boolean op, star, polygon | that node alone rasterized at 2x |
+| Node with layer blur or shadow | that node alone rasterized at up to 2x |
+| Group with a mask, clipped frame with overflow, group opacity | that container rasterized at 2x |
+| Image fill | that node alone rasterized at 2x |
+| Container stroke | whole container rasterized to preserve border/child ordering |
+| Multiple fills, nonuniform corners, skew/reflection | affected node/container rasterized |
+| Unsupported text spacing, decoration, case, weight or mixed styles | text layer rasterized |
+
+Raster dimensions are capped at 3840 pixels on the longest side, including
+source layers larger than 3840 pixels (scale can be below 1).
+
+Rasterized layers keep their own coordinates inside the slide. The PNG already
+contains the rotation, opacity, and effects, so it is placed without further
+transforms.
+
+Each slide reports `rasterReasons` so the UI can say how much of the deck
+stayed editable.
+
+### Units
+
+The PPTX canvas is always 13.333in / 960pt wide, so every px→pt conversion has
+to be derived from the source slide width: `pt = px * 960 / slideWidth`. A
+fixed multiplier (the prototype used `* 0.75`) is only correct for 1280px
+layouts and makes text 1.5x too large on a 1920px deck.
+
+Figma rotation is counter-clockwise, OOXML rotation is clockwise, so the sign
+is inverted on export. The angle comes from the absolute transform, including
+parent rotations. Rotated objects are written with their unrotated size
+centered on the AABB, because PowerPoint rotates a shape around the center of
+the box it is given.
+
+### Known gaps
+
+- Text uses native export only for supported styles; explicit line height,
+  letter spacing and unsupported per-character styling use a raster fallback.
+- Font availability and line wrapping still require real PowerPoint validation.
+- Editable geometry targets 16:9; other aspect ratios are not yet normalized
+  consistently with the contained image-only path.
+- Auto-layout, components, and prototype links are flattened to plain objects.
+- A deck with many rasterized layers produces a large PPTX; 2x is a compromise.
